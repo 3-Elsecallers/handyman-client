@@ -145,6 +145,8 @@ export default function ProviderDocumentsPage() {
         );
         if (pendingIndex === -1) continue;
 
+        const file = pendingFiles[pendingIndex].file;
+
         setPendingFiles((prev) =>
           prev.map((f, idx) =>
             idx === pendingIndex ? { ...f, status: "uploading" as const, progress: 0 } : f,
@@ -175,8 +177,8 @@ export default function ProviderDocumentsPage() {
           });
 
           xhr.open("PUT", item.uploadUrl);
-          xhr.setRequestHeader("Content-Type", item.mimeType);
-          xhr.send(item.file);
+          xhr.setRequestHeader("Content-Type", file.type);
+          xhr.send(file);
 
           await uploadPromise;
 

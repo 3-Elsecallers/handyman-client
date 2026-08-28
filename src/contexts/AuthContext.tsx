@@ -103,7 +103,6 @@ async function restoreSession(): Promise<{ loggedIn: boolean; user: IUser | null
 
   const tokens = response.data.data;
   localStorage.setItem('accessToken', tokens.accessToken);
-  localStorage.setItem('refreshToken', tokens.refreshToken);
 
   const user = decodeAccessToken(tokens.accessToken);
   if (!user) {

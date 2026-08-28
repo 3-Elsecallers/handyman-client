@@ -254,3 +254,25 @@ export async function getDocumentDownloadUrl(documentId: string) {
     return isAxiosError(error) ? error.response : undefined;
   }
 }
+
+export async function requestTestUploadUrl() {
+  try {
+    const response = await axios.post<{
+      data: { uploadUrl: string; s3Key: string };
+    }>("/providers/me/test/upload-file");
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getTestImage() {
+  try {
+    const response = await axios.get<Blob>("/providers/me/test/image", {
+      responseType: "blob",
+    });
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}

@@ -9,6 +9,7 @@ import CardActionArea from "@mui/material/CardActionArea";
 import Grid from "@mui/material/Grid";
 import Typography from "@mui/material/Typography";
 
+import UserIcon from "@mui/icons-material/Group";
 import CustomerIcon from "@mui/icons-material/People";
 import ProviderIcon from "@mui/icons-material/Handyman";
 import CategoryIcon from "@mui/icons-material/Category";
@@ -20,14 +21,20 @@ import { useRouter } from "next/navigation";
 
 const SECTIONS = [
   {
+    title: "Users",
+    description: "View and manage all platform users.",
+    icon: <UserIcon sx={{ fontSize: 40 }} />,
+    href: "/admin/dashboard/users",
+  },
+  {
     title: "Customers",
-    description: "View and manage customer accounts.",
+    description: "View customer accounts and activity.",
     icon: <CustomerIcon sx={{ fontSize: 40 }} />,
     href: "/admin/dashboard/customers",
   },
   {
     title: "Providers",
-    description: "Review and verify provider applications.",
+    description: "Manage providers, verification and documents.",
     icon: <ProviderIcon sx={{ fontSize: 40 }} />,
     href: "/admin/dashboard/providers",
   },

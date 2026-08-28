@@ -1,8 +1,10 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import AppBar from '@mui/material/AppBar';
+import Badge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
@@ -13,27 +15,35 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 
 import AdminNavIcon from '@mui/icons-material/AdminPanelSettings';
+import UserIcon from '@mui/icons-material/Group';
 import CustomerIcon from '@mui/icons-material/People';
 import ProviderIcon from '@mui/icons-material/Handyman';
 import CategoryIcon from '@mui/icons-material/Category';
 import ServiceIcon from '@mui/icons-material/Build';
 import ReviewIcon from '@mui/icons-material/RateReview';
 import AuditIcon from '@mui/icons-material/History';
+import EventIcon from '@mui/icons-material/Event';
+import PercentIcon from '@mui/icons-material/Percent';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import MenuIcon from '@mui/icons-material/Menu';
+import NotificationIcon from '@mui/icons-material/Notifications';
 
 import AdminNavItem from '@/components/admin/AdminNavItem';
 import SignOutDialog from '@/components/dashboard/SignOutDialog';
+import { getVerificationQueueCount } from '@/api/admin.api';
 
 const DRAWER_WIDTH = 240;
 
 const NAV_ITEMS = [
   { label: 'Overview', icon: <DashboardIcon />, href: '/admin/dashboard' },
+  { label: 'Users', icon: <UserIcon />, href: '/admin/dashboard/users' },
   { label: 'Customers', icon: <CustomerIcon />, href: '/admin/dashboard/customers' },
-  { label: 'Providers', icon: <ProviderIcon />, href: '/admin/dashboard/providers' },
+  { label: 'Providers', icon: <ProviderIcon />, href: '/admin/dashboard/providers', badge: true },
   { label: 'Categories', icon: <CategoryIcon />, href: '/admin/dashboard/categories' },
   { label: 'Services', icon: <ServiceIcon />, href: '/admin/dashboard/services' },
   { label: 'Reviews', icon: <ReviewIcon />, href: '/admin/dashboard/reviews' },
+  { label: 'Bookings', icon: <EventIcon />, href: '/admin/dashboard/bookings' },
+  { label: 'Promo Codes', icon: <PercentIcon />, href: '/admin/dashboard/promos' },
   { label: 'Audit Log', icon: <AuditIcon />, href: '/admin/dashboard/audit-log' },
 ];
 
@@ -44,8 +54,30 @@ interface AdminDashboardShellProps {
 export default function AdminDashboardShell({
   children,
 }: AdminDashboardShellProps) {
+  const router = useRouter();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchCount() {
+      try {
+        const response = await getVerificationQueueCount();
+        if (mounted && response?.status === 200 && response.data.data) {
+          setPendingCount(response.data.data.count);
+        }
+      } catch {
+        // silent
+      }
+    }
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const drawer = (
     <Box>
@@ -58,7 +90,11 @@ export default function AdminDashboardShell({
       <Divider />
       <List sx={{ px: 1, pt: 1 }}>
         {NAV_ITEMS.map((item) => (
-          <AdminNavItem key={item.href} {...item} />
+          <AdminNavItem
+            key={item.href}
+            {...item}
+            badgeCount={item.badge ? pendingCount : undefined}
+          />
         ))}
       </List>
     </Box>
@@ -88,6 +124,15 @@ export default function AdminDashboardShell({
           >
             Handyman
           </Typography>
+          <IconButton
+            color="inherit"
+            sx={{ mr: 1 }}
+            onClick={() => router.push('/admin/dashboard/providers')}
+          >
+            <Badge badgeContent={pendingCount} color="error" max={99}>
+              <NotificationIcon />
+            </Badge>
+          </IconButton>
           <Button
             color="inherit"
             variant="outlined"

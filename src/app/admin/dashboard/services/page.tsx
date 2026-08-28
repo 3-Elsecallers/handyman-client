@@ -17,23 +17,26 @@ import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import BlockIcon from "@mui/icons-material/Block";
 
 import { useFormik } from "formik";
 import * as Yup from "yup";
 
-import { getCategories, getServices, createService, updateService } from "@/api/admin.api";
+import { getCategories, getServices, createService, updateService, deleteService } from "@/api/admin.api";
 import AdminTable from "@/components/admin/AdminTable";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import type { AdminTableColumn } from "@/components/admin/AdminTable";
 import type { Service, ServiceCategory } from "@/types/admin";
 
 const createValidationSchema = Yup.object({
   categoryId: Yup.string().required("Category is required"),
   name: Yup.string().trim().min(1, "Required").max(100, "Max 100 characters").required("Name is required"),
-  slug: Yup.string().trim().min(1, "Required").max(100, "Max 100 characters").matches(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens").required("Slug is required"),
   description: Yup.string().trim().max(1000, "Max 1000 characters").optional(),
   basePrice: Yup.number().min(0, "Min 0").required("Base price is required"),
   durationMins: Yup.number().integer().min(15, "Min 15 minutes").max(480, "Max 480 minutes").required("Duration is required"),
@@ -45,6 +48,7 @@ export default function ServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -52,6 +56,10 @@ export default function ServicesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingService, setDeletingService] = useState<Service | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const categoryMap = categories.reduce<Record<string, ServiceCategory>>(
     (acc, cat) => ({ ...acc, [cat.id]: cat }),
@@ -61,17 +69,21 @@ export default function ServicesPage() {
   const fetchServices = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const response = await getServices(categoryFilter ? { categoryId: categoryFilter } : undefined);
+    const response = await getServices({
+      categoryId: categoryFilter || undefined,
+      search: search || undefined,
+      includeInactive: true,
+    });
     if (response?.status === 200 && response.data.data) {
       setServices(response.data.data);
     } else {
       setError(response?.data?.message || "Failed to load services.");
     }
     setLoading(false);
-  }, [categoryFilter]);
+  }, [categoryFilter, search]);
 
   const fetchCategories = useCallback(async () => {
-    const response = await getCategories();
+    const response = await getCategories(true);
     if (response?.status === 200 && response.data.data) {
       setCategories(response.data.data);
     }
@@ -91,7 +103,6 @@ export default function ServicesPage() {
     initialValues: {
       categoryId: "",
       name: "",
-      slug: "",
       description: "",
       basePrice: 0,
       durationMins: 60,
@@ -107,7 +118,6 @@ export default function ServicesPage() {
       const payload: Record<string, unknown> = {
         categoryId: values.categoryId,
         name: values.name.trim(),
-        slug: values.slug.trim(),
         basePrice: values.basePrice,
         durationMins: values.durationMins,
       };
@@ -135,6 +145,32 @@ export default function ServicesPage() {
     },
   });
 
+  const handleToggleActive = async (service: Service) => {
+    const response = await updateService(service.id, { isActive: !service.isActive });
+    if (response?.status === 200) {
+      setSubmitSuccess(`Service ${service.isActive ? "deactivated" : "activated"}.`);
+      fetchServices();
+    } else {
+      setSubmitError(response?.data?.message || "Failed to update service status.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingService) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    const response = await deleteService(deletingService.id);
+    if (response?.status === 200) {
+      setSubmitSuccess(`Service "${deletingService.name}" has been deleted.`);
+      setDeleteConfirmOpen(false);
+      setDeletingService(null);
+      fetchServices();
+    } else {
+      setDeleteError(response?.data?.message || "Failed to delete service.");
+    }
+    setDeleteLoading(false);
+  };
+
   const handleOpenCreate = () => {
     setEditingService(null);
     formik.resetForm();
@@ -147,7 +183,6 @@ export default function ServicesPage() {
     formik.setValues({
       categoryId: service.categoryId,
       name: service.name,
-      slug: service.slug,
       description: service.description ?? "",
       basePrice: service.basePrice,
       durationMins: service.durationMins,
@@ -173,13 +208,12 @@ export default function ServicesPage() {
     },
     {
       label: "Base Price",
-      render: (row) => `$${row.basePrice.toFixed(2)}`,
+      render: (row) => `₵${row.basePrice.toFixed(2)}`,
     },
     {
       label: "Duration",
       render: (row) => `${row.durationMins} min`,
     },
-    { label: "Sort", key: "sortOrder" },
     {
       label: "Active",
       render: (row) => (
@@ -193,15 +227,43 @@ export default function ServicesPage() {
     {
       label: "Actions",
       render: (row) => (
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleOpenEdit(row);
-          }}
-        >
-          <EditIcon fontSize="small" />
-        </IconButton>
+        <Box sx={{ display: "flex", gap: 0.5 }}>
+          <Tooltip title="Edit">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenEdit(row);
+              }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={row.isActive ? "Deactivate" : "Activate"}>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleActive(row);
+              }}
+            >
+              <BlockIcon fontSize="small" color={row.isActive ? "warning" : "success"} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeletingService(row);
+                setDeleteError(null);
+                setDeleteConfirmOpen(true);
+              }}
+            >
+              <DeleteIcon fontSize="small" color="error" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       ),
     },
   ];
@@ -217,7 +279,14 @@ export default function ServicesPage() {
         </Button>
       </Box>
 
-      <Box sx={{ mb: 3 }}>
+      <Box sx={{ display: "flex", gap: 2, mb: 3, flexWrap: "wrap", alignItems: "center" }}>
+        <TextField
+          size="small"
+          placeholder="Search services..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ minWidth: 240 }}
+        />
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Filter by Category</InputLabel>
           <Select
@@ -292,18 +361,6 @@ export default function ServicesPage() {
               onBlur={formik.handleBlur}
               error={formik.touched.name && Boolean(formik.errors.name)}
               helperText={formik.touched.name && formik.errors.name}
-            />
-            <TextField
-              margin="normal"
-              fullWidth
-              id="slug"
-              name="slug"
-              label="Slug"
-              value={formik.values.slug}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={formik.touched.slug && Boolean(formik.errors.slug)}
-              helperText={formik.touched.slug && formik.errors.slug}
             />
             <TextField
               margin="normal"
@@ -390,6 +447,30 @@ export default function ServicesPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete Service"
+        description={
+          deletingService
+            ? `Are you sure you want to delete "${deletingService.name}"? This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onConfirm={handleDelete}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setDeletingService(null);
+          setDeleteError(null);
+        }}
+      >
+        {deleteError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {deleteError}
+          </Alert>
+        )}
+      </ConfirmDialog>
     </Box>
   );
 }

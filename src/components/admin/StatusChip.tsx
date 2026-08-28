@@ -2,13 +2,19 @@
 
 import Chip from '@mui/material/Chip';
 
-import type { ProviderStatus, ReviewStatus } from '@/types/admin';
+import type { ProviderStatus, ReviewStatus, UserStatus, VerificationStatus } from '@/types/admin';
+import type { BookingStatus } from '@/types/customer';
 
-type StatusValue = ProviderStatus | ReviewStatus;
+type StatusValue =
+  | ProviderStatus
+  | ReviewStatus
+  | UserStatus
+  | VerificationStatus
+  | BookingStatus;
 
 const STATUS_CONFIG: Record<
-  StatusValue,
-  { label: string; color: 'warning' | 'success' | 'error' | 'default' }
+  string,
+  { label: string; color: 'warning' | 'success' | 'error' | 'default' | 'info' | 'primary' }
 > = {
   pending_review: { label: 'Pending Review', color: 'warning' },
   active: { label: 'Active', color: 'success' },
@@ -17,6 +23,15 @@ const STATUS_CONFIG: Record<
   visible: { label: 'Visible', color: 'success' },
   flagged: { label: 'Flagged', color: 'warning' },
   removed: { label: 'Removed', color: 'error' },
+  not_submitted: { label: 'Not Submitted', color: 'default' },
+  approved: { label: 'Approved', color: 'success' },
+  rejected: { label: 'Rejected', color: 'error' },
+  pending: { label: 'Pending', color: 'warning' },
+  confirmed: { label: 'Confirmed', color: 'info' },
+  in_progress: { label: 'In Progress', color: 'primary' },
+  completed: { label: 'Completed', color: 'success' },
+  cancelled: { label: 'Cancelled', color: 'error' },
+  disputed: { label: 'Disputed', color: 'warning' },
 };
 
 interface StatusChipProps {

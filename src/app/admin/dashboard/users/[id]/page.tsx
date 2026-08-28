@@ -10,17 +10,17 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
-import Divider from "@mui/material/Divider";
 import Typography from "@mui/material/Typography";
 
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import DeleteIcon from "@mui/icons-material/Delete";
 
-import { getUserDetail, updateUserStatus } from "@/api/admin.api";
+import { getUserDetail, updateUserStatus, deleteUser } from "@/api/admin.api";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import StatusChip from "@/components/admin/StatusChip";
 import type { UserDetail } from "@/types/admin";
 
-export default function CustomerDetailPage() {
+export default function UserDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
@@ -32,7 +32,7 @@ export default function CustomerDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"suspend" | "activate">("suspend");
+  const [pendingAction, setPendingAction] = useState<"suspend" | "activate" | "delete">("suspend");
 
   const fetchUser = useCallback(async () => {
     setLoading(true);
@@ -41,7 +41,7 @@ export default function CustomerDetailPage() {
     if (response?.status === 200 && response.data.data) {
       setUser(response.data.data);
     } else {
-      setError(response?.data?.message || "Failed to load customer details.");
+      setError(response?.data?.message || "Failed to load user details.");
     }
     setLoading(false);
   }, [id]);
@@ -55,22 +55,34 @@ export default function CustomerDetailPage() {
     setActionLoading(true);
     setActionError(null);
     setActionSuccess(null);
-    const response = await updateUserStatus(id, pendingAction);
-    if (response?.status === 200) {
-      setActionSuccess(
-        pendingAction === "suspend"
-          ? "Customer has been suspended."
-          : "Customer has been activated."
-      );
-      fetchUser();
+
+    if (pendingAction === "delete") {
+      const response = await deleteUser(id);
+      if (response?.status === 200) {
+        setActionSuccess("User has been deleted.");
+        setTimeout(() => router.push("/admin/dashboard/users"), 1500);
+      } else {
+        setActionError(response?.data?.message || "Delete failed. Please try again.");
+      }
     } else {
-      setActionError(response?.data?.message || "Action failed. Please try again.");
+      const response = await updateUserStatus(id, pendingAction);
+      if (response?.status === 200) {
+        setActionSuccess(
+          pendingAction === "suspend"
+            ? "User has been suspended."
+            : "User has been activated."
+        );
+        fetchUser();
+      } else {
+        setActionError(response?.data?.message || "Action failed. Please try again.");
+      }
     }
+
     setActionLoading(false);
     setConfirmOpen(false);
   };
 
-  const openConfirm = (action: "suspend" | "activate") => {
+  const openConfirm = (action: "suspend" | "activate" | "delete") => {
     setPendingAction(action);
     setActionError(null);
     setActionSuccess(null);
@@ -88,19 +100,26 @@ export default function CustomerDetailPage() {
   if (error || !user) {
     return (
       <Alert severity="error">
-        {error || "Customer not found."}
+        {error || "User not found."}
       </Alert>
     );
   }
+
+  const confirmTitle = pendingAction === "suspend" ? "Suspend User" : pendingAction === "activate" ? "Activate User" : "Delete User";
+  const confirmDescription = pendingAction === "suspend"
+    ? `Are you sure you want to suspend ${user.firstName} ${user.lastName}? This will restrict their access to the platform.`
+    : pendingAction === "activate"
+    ? `Are you sure you want to activate ${user.firstName} ${user.lastName}?`
+    : `Are you sure you want to permanently delete ${user.firstName} ${user.lastName}? This action cannot be undone.`;
 
   return (
     <Box>
       <Button
         startIcon={<ArrowBackIcon />}
-        onClick={() => router.push("/admin/dashboard/customers")}
+        onClick={() => router.push("/admin/dashboard/users")}
         sx={{ mb: 2 }}
       >
-        Back to Customers
+        Back to Users
       </Button>
 
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
@@ -122,7 +141,7 @@ export default function CustomerDetailPage() {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Account Information
+            Account Details
           </Typography>
           <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
             <Box>
@@ -132,6 +151,10 @@ export default function CustomerDetailPage() {
             <Box>
               <Typography variant="body2" color="text.secondary">Phone</Typography>
               <Typography>{user.phone || '—'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="body2" color="text.secondary">Role</Typography>
+              <Chip label={user.role} size="small" variant="outlined" />
             </Box>
             <Box>
               <Typography variant="body2" color="text.secondary">Status</Typography>
@@ -153,28 +176,8 @@ export default function CustomerDetailPage() {
                 color={user.phoneVerified ? "success" : "default"}
               />
             </Box>
-          </Box>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Account Metadata
-          </Typography>
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
             <Box>
-              <Typography variant="body2" color="text.secondary">Customer ID</Typography>
-              <Typography sx={{ fontFamily: "monospace", fontSize: "0.875rem" }}>
-                {user.id}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="body2" color="text.secondary">Role</Typography>
-              <Chip label={user.role} size="small" variant="outlined" />
-            </Box>
-            <Box>
-              <Typography variant="body2" color="text.secondary">Date Created</Typography>
+              <Typography variant="body2" color="text.secondary">Created</Typography>
               <Typography>{new Date(user.createdAt).toLocaleString()}</Typography>
             </Box>
             <Box>
@@ -185,19 +188,6 @@ export default function CustomerDetailPage() {
         </CardContent>
       </Card>
 
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Booking History
-          </Typography>
-          <Alert severity="info" sx={{ mt: 1 }}>
-            Booking history will be available once the booking service is fully integrated.
-          </Alert>
-        </CardContent>
-      </Card>
-
-      <Divider sx={{ my: 3 }} />
-
       <Box sx={{ display: "flex", gap: 2 }}>
         {user.status === "active" ? (
           <Button
@@ -205,7 +195,7 @@ export default function CustomerDetailPage() {
             color="error"
             onClick={() => openConfirm("suspend")}
           >
-            Suspend Customer
+            Suspend User
           </Button>
         ) : (
           <Button
@@ -213,20 +203,26 @@ export default function CustomerDetailPage() {
             color="success"
             onClick={() => openConfirm("activate")}
           >
-            Activate Customer
+            Activate User
+          </Button>
+        )}
+        {user.role !== "admin" && (
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={() => openConfirm("delete")}
+          >
+            Delete User
           </Button>
         )}
       </Box>
 
       <ConfirmDialog
         open={confirmOpen}
-        title={pendingAction === "suspend" ? "Suspend Customer" : "Activate Customer"}
-        description={
-          pendingAction === "suspend"
-            ? `Are you sure you want to suspend ${user.firstName} ${user.lastName}? This will restrict their access to the platform.`
-            : `Are you sure you want to activate ${user.firstName} ${user.lastName}?`
-        }
-        confirmLabel={pendingAction === "suspend" ? "Suspend" : "Activate"}
+        title={confirmTitle}
+        description={confirmDescription}
+        confirmLabel={pendingAction === "suspend" ? "Suspend" : pendingAction === "activate" ? "Activate" : "Delete"}
         loading={actionLoading}
         onConfirm={handleStatusAction}
         onClose={() => setConfirmOpen(false)}

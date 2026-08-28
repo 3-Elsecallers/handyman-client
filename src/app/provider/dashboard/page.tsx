@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -15,13 +16,22 @@ import WorkIcon from "@mui/icons-material/Work";
 import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 import VerifiedIcon from "@mui/icons-material/Verified";
 
+import { useRouter } from "next/navigation";
+
 import { getDashboard } from "@/api/provider.api";
+import { buildServiceNameMap, listProviderBookings } from "@/api/booking.api";
 import { useAuth } from "@/contexts/AuthContext";
+import StatusChip from "@/components/admin/StatusChip";
 import type { DashboardStats } from "@/types/provider";
+import type { Booking, BookingStatus } from "@/types/customer";
 
 export default function ProviderDashboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [data, setData] = useState<DashboardStats | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingTotal, setBookingTotal] = useState(0);
+  const [serviceMap, setServiceMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,11 +39,19 @@ export default function ProviderDashboardPage() {
     async function load() {
       setLoading(true);
       setError(null);
-      const response = await getDashboard();
-      if (response?.status === 200 && response.data.data) {
-        setData(response.data.data);
+      const [dashboardResponse, bookingsResponse] = await Promise.all([
+        getDashboard(),
+        listProviderBookings({ page: 1, limit: 10 }),
+      ]);
+      if (dashboardResponse?.status === 200 && dashboardResponse.data.data) {
+        setData(dashboardResponse.data.data);
       } else {
-        setError(response?.data?.message || "Failed to load dashboard.");
+        setError(dashboardResponse?.data?.message || "Failed to load dashboard.");
+      }
+      if (bookingsResponse?.status === 200 && bookingsResponse.data.data) {
+        const bookingData = bookingsResponse.data.data;
+        setBookings(bookingData.items);
+        setBookingTotal(bookingData.total);
       }
       setLoading(false);
     }
@@ -43,6 +61,14 @@ export default function ProviderDashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    async function load() {
+      const nameMap = await buildServiceNameMap();
+      setServiceMap(nameMap);
+    }
+    load();
+  }, []);
 
   if (loading) {
     return (
@@ -118,12 +144,54 @@ export default function ProviderDashboardPage() {
                 {stats?.verified ? "Verified" : "Not Verified"}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Account Status: {stats?.status ?? "unknown"}
+                Account Status: {stats?.status.split("_").join(" ").toUpperCase() ?? "Unknown"}
               </Typography>
             </Box>
           </CardContent>
         </Card>
       </Box>
+
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          Bookings
+        </Typography>
+        <Button size="small" onClick={() => router.push("/provider/dashboard/bookings")}>
+          View all ({bookingTotal})
+        </Button>
+      </Box>
+      {bookings.length === 0 ? (
+        <Alert severity="info" sx={{ mb: 4 }}>
+          No bookings yet.
+        </Alert>
+      ) : (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1fr 1fr 1fr" }, gap: 2, mb: 4 }}>
+          {bookings.map((booking) => (
+            <Card
+              key={booking.id}
+              variant="outlined"
+              sx={{ cursor: "pointer" }}
+              onClick={() => router.push(`/provider/dashboard/bookings/${booking.id}`)}
+            >
+              <CardContent>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {serviceMap[booking.serviceId] || booking.service?.name || booking.serviceId}
+                  </Typography>
+                  <StatusChip status={booking.status as BookingStatus} />
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  {booking.scheduledAt
+                    ? new Date(booking.scheduledAt).toLocaleString()
+                    : "Unscheduled"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  GH₵ {booking.priceQuote.toFixed(2)} · {booking.type} · {booking.complexity}
+                </Typography>
+              </CardContent>
+            </Card>
+          ))}
+        </Box>
+      )}
 
       {data?.recentReviews && data.recentReviews.length > 0 && (
         <Box>

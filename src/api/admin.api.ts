@@ -6,6 +6,7 @@ import type {
   ServiceCategory,
   Service,
   ProviderProfile,
+  ProviderDetail,
   ProviderDocument,
   Review,
   PaginatedUsers,
@@ -19,11 +20,20 @@ interface ListUsersParams {
   limit?: number;
   search?: string;
   role?: string;
+  status?: string;
 }
 
 interface PaginationParams {
   page?: number;
   limit?: number;
+}
+
+interface ListProvidersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  verificationStatus?: string;
 }
 
 export async function getUsers(params: ListUsersParams = {}) {
@@ -34,6 +44,7 @@ export async function getUsers(params: ListUsersParams = {}) {
         limit: params.limit ?? 20,
         ...(params.search && { search: params.search }),
         ...(params.role && { role: params.role }),
+        ...(params.status && { status: params.status }),
       },
     });
     return response;
@@ -58,9 +69,40 @@ export async function updateUserStatus(
   action: "suspend" | "activate",
 ) {
   try {
-    const response = await axios.put<{ data: { userId: string; action: string; updatedAt: string } }>(
+    const response = await axios.put<{ data: { id: string; status: string; updatedAt: string } }>(
       `/admin/users/${id}/status`,
       { action },
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function deleteUser(id: string) {
+  try {
+    const response = await axios.delete<{ data: { userId: string; deletedAt: string } }>(
+      `/admin/users/${id}`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getAllProviders(params: ListProvidersParams = {}) {
+  try {
+    const response = await axios.get<{ data: PaginatedProviders }>(
+      "/admin/providers",
+      {
+        params: {
+          page: params.page ?? 1,
+          limit: params.limit ?? 20,
+          ...(params.search && { search: params.search }),
+          ...(params.status && { status: params.status }),
+          ...(params.verificationStatus && { verificationStatus: params.verificationStatus }),
+        },
+      },
     );
     return response;
   } catch (error: unknown) {
@@ -85,6 +127,28 @@ export async function getVerificationQueue(params: PaginationParams = {}) {
   }
 }
 
+export async function getVerificationQueueCount() {
+  try {
+    const response = await axios.get<{ data: { count: number } }>(
+      "/admin/providers/verify/count",
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getProviderDetail(id: string) {
+  try {
+    const response = await axios.get<{ data: ProviderDetail }>(
+      `/admin/providers/${id}`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
 export async function verifyProvider(id: string, approved: boolean, rejectionNote?: string) {
   try {
     const response = await axios.put<{ data: ProviderProfile }>(
@@ -97,10 +161,13 @@ export async function verifyProvider(id: string, approved: boolean, rejectionNot
   }
 }
 
-export async function getCategories() {
+export async function getCategories(includeInactive = false) {
   try {
     const response = await axios.get<{ data: ServiceCategory[] }>(
       "/services/categories",
+      {
+        params: includeInactive ? { includeInactive: "true" } : {},
+      },
     );
     return response;
   } catch (error: unknown) {
@@ -110,7 +177,6 @@ export async function getCategories() {
 
 export async function createCategory(data: {
   name: string;
-  slug: string;
   description?: string;
   iconUrl?: string;
   sortOrder?: number;
@@ -141,10 +207,25 @@ export async function updateCategory(
   }
 }
 
-export async function getServices(params?: { categoryId?: string }) {
+export async function deleteCategory(id: string) {
+  try {
+    const response = await axios.delete<{ data: { id: string; deletedAt: string } }>(
+      `/admin/services/categories/${id}`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getServices(params?: { categoryId?: string; search?: string; includeInactive?: boolean }) {
   try {
     const response = await axios.get<{ data: Service[] }>("/services", {
-      params: params?.categoryId ? { categoryId: params.categoryId } : {},
+      params: {
+        ...(params?.categoryId && { categoryId: params.categoryId }),
+        ...(params?.search && { search: params.search }),
+        ...(params?.includeInactive && { includeInactive: "true" }),
+      },
     });
     return response;
   } catch (error: unknown) {
@@ -181,6 +262,17 @@ export async function updateService(
     const response = await axios.put<{ data: Service }>(
       `/admin/services/${id}`,
       data,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function deleteService(id: string) {
+  try {
+    const response = await axios.delete<{ data: { id: string; deletedAt: string } }>(
+      `/admin/services/${id}`,
     );
     return response;
   } catch (error: unknown) {
@@ -252,6 +344,38 @@ export async function getDocumentDownloadUrl(documentId: string) {
   try {
     const response = await axios.get<{ data: { url: string; document: ProviderDocument } }>(
       `/admin/documents/${documentId}/download-url`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getDocumentFile(documentId: string): Promise<string | null> {
+  try {
+    const response = await axios.get<Blob>(
+      `/admin/documents/${documentId}/file`,
+      { responseType: "blob" },
+    );
+    if (response.status === 200) {
+      return URL.createObjectURL(response.data);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getProviderReviews(providerId: string, params: PaginationParams = {}) {
+  try {
+    const response = await axios.get<{ data: PaginatedReviews }>(
+      `/admin/providers/${providerId}/reviews`,
+      {
+        params: {
+          page: params.page ?? 1,
+          limit: params.limit ?? 20,
+        },
+      },
     );
     return response;
   } catch (error: unknown) {

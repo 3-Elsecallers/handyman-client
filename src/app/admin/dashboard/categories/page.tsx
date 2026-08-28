@@ -13,22 +13,25 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import BlockIcon from "@mui/icons-material/Block";
 
 import { useFormik } from "formik";
 import * as Yup from "yup";
 
-import { getCategories, createCategory, updateCategory } from "@/api/admin.api";
+import { getCategories, createCategory, updateCategory, deleteCategory } from "@/api/admin.api";
 import AdminTable from "@/components/admin/AdminTable";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import type { AdminTableColumn } from "@/components/admin/AdminTable";
 import type { ServiceCategory } from "@/types/admin";
 
 const createValidationSchema = Yup.object({
   name: Yup.string().trim().min(1, "Required").max(100, "Max 100 characters").required("Name is required"),
-  slug: Yup.string().trim().min(1, "Required").max(100, "Max 100 characters").matches(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens").required("Slug is required"),
   description: Yup.string().trim().max(500, "Max 500 characters").optional(),
   iconUrl: Yup.string().trim().test('url-or-empty', 'Must be a valid URL', (value) => !value || Yup.string().url().isValidSync(value)),
   sortOrder: Yup.number().integer().min(0, "Min 0").optional(),
@@ -36,6 +39,7 @@ const createValidationSchema = Yup.object({
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -43,11 +47,15 @@ export default function CategoriesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<ServiceCategory | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchCategories = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const response = await getCategories();
+    const response = await getCategories(true);
     if (response?.status === 200 && response.data.data) {
       setCategories(response.data.data);
     } else {
@@ -61,10 +69,14 @@ export default function CategoriesPage() {
     load();
   }, [fetchCategories]);
 
+  const filteredCategories = categories.filter((cat) =>
+    !search || cat.name.toLowerCase().includes(search.toLowerCase()) ||
+    cat.description?.toLowerCase().includes(search.toLowerCase())
+  );
+
   const formik = useFormik({
     initialValues: {
       name: "",
-      slug: "",
       description: "",
       iconUrl: "",
       sortOrder: 0,
@@ -77,7 +89,6 @@ export default function CategoriesPage() {
 
       const payload: Record<string, unknown> = {
         name: values.name.trim(),
-        slug: values.slug.trim(),
       };
       if (values.description.trim()) payload.description = values.description.trim();
       if (values.iconUrl.trim()) payload.iconUrl = values.iconUrl.trim();
@@ -103,6 +114,32 @@ export default function CategoriesPage() {
     },
   });
 
+  const handleToggleActive = async (category: ServiceCategory) => {
+    const response = await updateCategory(category.id, { isActive: !category.isActive });
+    if (response?.status === 200) {
+      setSubmitSuccess(`Category ${category.isActive ? "deactivated" : "activated"}.`);
+      fetchCategories();
+    } else {
+      setSubmitError(response?.data?.message || "Failed to update category status.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingCategory) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    const response = await deleteCategory(deletingCategory.id);
+    if (response?.status === 200) {
+      setSubmitSuccess(`Category "${deletingCategory.name}" has been deleted.`);
+      setDeleteConfirmOpen(false);
+      setDeletingCategory(null);
+      fetchCategories();
+    } else {
+      setDeleteError(response?.data?.message || "Failed to delete category.");
+    }
+    setDeleteLoading(false);
+  };
+
   const handleOpenCreate = () => {
     setEditingCategory(null);
     formik.resetForm();
@@ -114,7 +151,6 @@ export default function CategoriesPage() {
     setEditingCategory(category);
     formik.setValues({
       name: category.name,
-      slug: category.slug,
       description: category.description ?? "",
       iconUrl: category.iconUrl ?? "",
       sortOrder: category.sortOrder,
@@ -141,7 +177,6 @@ export default function CategoriesPage() {
         </Typography>
       ),
     },
-    { label: "Sort", key: "sortOrder" },
     {
       label: "Active",
       render: (row) => (
@@ -155,15 +190,43 @@ export default function CategoriesPage() {
     {
       label: "Actions",
       render: (row) => (
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleOpenEdit(row);
-          }}
-        >
-          <EditIcon fontSize="small" />
-        </IconButton>
+        <Box sx={{ display: "flex", gap: 0.5 }}>
+          <Tooltip title="Edit">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenEdit(row);
+              }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={row.isActive ? "Deactivate" : "Activate"}>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleActive(row);
+              }}
+            >
+              <BlockIcon fontSize="small" color={row.isActive ? "warning" : "success"} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeletingCategory(row);
+                setDeleteError(null);
+                setDeleteConfirmOpen(true);
+              }}
+            >
+              <DeleteIcon fontSize="small" color="error" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       ),
     },
   ];
@@ -177,6 +240,16 @@ export default function CategoriesPage() {
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
           Add Category
         </Button>
+      </Box>
+
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          size="small"
+          placeholder="Search categories..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ minWidth: 280 }}
+        />
       </Box>
 
       {submitSuccess && (
@@ -193,7 +266,7 @@ export default function CategoriesPage() {
 
       <AdminTable
         columns={columns}
-        rows={categories}
+        rows={filteredCategories}
         loading={loading}
         emptyMessage="No categories found."
         rowKey={(row) => row.id}
@@ -214,18 +287,6 @@ export default function CategoriesPage() {
               onBlur={formik.handleBlur}
               error={formik.touched.name && Boolean(formik.errors.name)}
               helperText={formik.touched.name && formik.errors.name}
-            />
-            <TextField
-              margin="normal"
-              fullWidth
-              id="slug"
-              name="slug"
-              label="Slug"
-              value={formik.values.slug}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={formik.touched.slug && Boolean(formik.errors.slug)}
-              helperText={formik.touched.slug && formik.errors.slug}
             />
             <TextField
               margin="normal"
@@ -286,6 +347,30 @@ export default function CategoriesPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete Category"
+        description={
+          deletingCategory
+            ? `Are you sure you want to delete "${deletingCategory.name}"? This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onConfirm={handleDelete}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setDeletingCategory(null);
+          setDeleteError(null);
+        }}
+      >
+        {deleteError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {deleteError}
+          </Alert>
+        )}
+      </ConfirmDialog>
     </Box>
   );
 }

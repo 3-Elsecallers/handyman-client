@@ -3,6 +3,7 @@ export type ReviewStatus = "visible" | "flagged" | "removed";
 export type VerificationStatus = "not_submitted" | "pending_review" | "approved" | "rejected";
 export type DocumentCategory = "selfie" | "ghana_card" | "additional";
 export type DocumentStatus = "uploaded" | "pending_review" | "approved" | "rejected";
+export type UserStatus = "active" | "suspended";
 
 export interface CustomerUser {
   id: string;
@@ -11,6 +12,7 @@ export interface CustomerUser {
   firstName: string;
   lastName: string;
   role: "customer" | "provider" | "admin";
+  status: UserStatus;
   createdAt: string;
 }
 
@@ -30,6 +32,7 @@ export interface ServiceCategory {
   sortOrder: number;
   isActive: boolean;
   createdAt: string;
+  _count?: { services: number };
 }
 
 export interface Service {
@@ -45,6 +48,7 @@ export interface Service {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  category?: ServiceCategory;
 }
 
 export interface ProviderProfile {
@@ -64,6 +68,16 @@ export interface ProviderProfile {
   lng: number | null;
   services?: ProviderService[];
   providerDocuments?: ProviderDocument[];
+  user?: {
+    id: string;
+    email: string;
+    phone: string | null;
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+    role: string;
+    createdAt: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,6 +89,7 @@ export interface ProviderService {
   customPrice: number | null;
   isActive: boolean;
   createdAt: string;
+  service?: Service;
 }
 
 export interface Review {
@@ -145,4 +160,38 @@ export interface ProviderDocument {
   rejectionReason: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProviderDetail extends ProviderProfile {
+  user: {
+    id: string;
+    email: string;
+    phone: string | null;
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+    role: string;
+    createdAt: string;
+  } | null;
+  services: ProviderService[];
+  providerDocuments: ProviderDocument[];
+}
+
+export interface Booking {
+  id: string;
+  customerId: string;
+  providerId: string;
+  serviceId: string;
+  status: string;
+  scheduledAt: string;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  totalPrice: number | null;
+  createdAt: string;
+  service?: Service;
+  provider?: ProviderProfile;
+}
+
+export interface CustomerDetail extends UserDetail {
+  bookings?: Booking[];
 }

@@ -27,6 +27,7 @@ import RateReviewIcon from '@mui/icons-material/RateReview';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import MenuIcon from '@mui/icons-material/Menu';
 import HandymanIcon from '@mui/icons-material/Handyman';
+import ScienceIcon from '@mui/icons-material/Science';
 
 import SignOutDialog from '@/components/dashboard/SignOutDialog';
 
@@ -41,6 +42,7 @@ const NAV_ITEMS = [
   { label: 'Blocked Slots', icon: <BlockIcon />, href: '/provider/dashboard/blocked-slots' },
   { label: 'Reviews', icon: <RateReviewIcon />, href: '/provider/dashboard/reviews' },
   { label: 'Browse Catalog', icon: <StorefrontIcon />, href: '/provider/dashboard/browse-services' },
+  { label: 'Test', icon: <ScienceIcon />, href: '/provider/dashboard/test' },
 ];
 
 interface ProviderDashboardShellProps {

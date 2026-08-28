@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
@@ -16,7 +17,9 @@ import StatusChip from "@/components/admin/StatusChip";
 import type { AdminTableColumn } from "@/components/admin/AdminTable";
 import type { CustomerUser } from "@/types/admin";
 
-export default function CustomersPage() {
+const ROLE_FILTERS = ["", "customer", "provider", "admin"] as const;
+
+export default function UsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<CustomerUser[]>([]);
   const [total, setTotal] = useState(0);
@@ -24,18 +27,19 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCustomers = useCallback(async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
     const response = await getUsers({
       page,
       limit: pageSize,
       search: search || undefined,
-      role: "customer",
+      role: roleFilter || undefined,
       status: statusFilter || undefined,
     });
     if (response?.status === 200 && response.data.data) {
@@ -44,18 +48,28 @@ export default function CustomersPage() {
       setTotal(data.total);
       setTotalPages(data.totalPages);
     } else {
-      setError(response?.data?.message || "Failed to load customers.");
+      setError(response?.data?.message || "Failed to load users.");
     }
     setLoading(false);
-  }, [page, pageSize, search, statusFilter]);
+  }, [page, pageSize, search, roleFilter, statusFilter]);
 
   useEffect(() => {
-    async function load() { await fetchCustomers(); }
+    async function load() { await fetchUsers(); }
     load();
-  }, [fetchCustomers]);
+  }, [fetchUsers]);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
+    setPage(1);
+  };
+
+  const handleRoleFilterChange = (role: string) => {
+    setRoleFilter(role);
+    setPage(1);
+  };
+
+  const handleStatusFilterChange = (status: string) => {
+    setStatusFilter(status);
     setPage(1);
   };
 
@@ -66,6 +80,12 @@ export default function CustomersPage() {
     },
     { label: "Email", key: "email" },
     { label: "Phone", key: "phone" },
+    {
+      label: "Role",
+      render: (row) => (
+        <Chip label={row.role} size="small" variant="outlined" />
+      ),
+    },
     {
       label: "Status",
       render: (row) => <StatusChip status={row.status} />,
@@ -79,7 +99,7 @@ export default function CustomersPage() {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        Customer Management
+        User Management
       </Typography>
 
       <Box sx={{ display: "flex", gap: 2, mb: 3, flexWrap: "wrap", alignItems: "center" }}>
@@ -91,19 +111,28 @@ export default function CustomersPage() {
           sx={{ minWidth: 280 }}
         />
         <Box sx={{ display: "flex", gap: 1 }}>
-          {["", "active", "suspended"].map((status) => (
+          {ROLE_FILTERS.map((role) => (
             <Chip
-              key={status || "all"}
-              label={status || "All Statuses"}
-              onClick={() => {
-                setStatusFilter(status);
-                setPage(1);
-              }}
-              color={statusFilter === status ? "primary" : "default"}
-              variant={statusFilter === status ? "filled" : "outlined"}
+              key={role || "all"}
+              label={role || "All Roles"}
+              onClick={() => handleRoleFilterChange(role)}
+              color={roleFilter === role ? "primary" : "default"}
+              variant={roleFilter === role ? "filled" : "outlined"}
             />
           ))}
         </Box>
+        <TextField
+          select
+          size="small"
+          label="Status"
+          value={statusFilter}
+          onChange={(e) => handleStatusFilterChange(e.target.value)}
+          sx={{ minWidth: 140 }}
+        >
+          <MenuItem value="">All Statuses</MenuItem>
+          <MenuItem value="active">Active</MenuItem>
+          <MenuItem value="suspended">Suspended</MenuItem>
+        </TextField>
       </Box>
 
       {error && (
@@ -116,8 +145,8 @@ export default function CustomersPage() {
         columns={columns}
         rows={users}
         loading={loading}
-        emptyMessage="No customers found."
-        onRowClick={(row) => router.push(`/admin/dashboard/customers/${row.id}`)}
+        emptyMessage="No users found."
+        onRowClick={(row) => router.push(`/admin/dashboard/users/${row.id}`)}
         rowKey={(row) => row.id}
       />
 

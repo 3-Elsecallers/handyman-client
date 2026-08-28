@@ -18,6 +18,7 @@ import * as Yup from "yup";
 import { getMyProfile, updateMyProfile } from "@/api/provider.api";
 import StatusChip from "@/components/admin/StatusChip";
 import type { ProviderProfile } from "@/types/provider";
+import { useAuth } from "@/contexts/AuthContext";
 
 const validationSchema = Yup.object({
   bio: Yup.string().trim().max(1000, "Max 1000 characters").optional(),
@@ -31,6 +32,8 @@ const validationSchema = Yup.object({
 });
 
 export default function ProviderProfilePage() {
+  const { user } = useAuth();
+
   const [profile, setProfile] = useState<ProviderProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +125,10 @@ export default function ProviderProfilePage() {
       <Card variant="outlined" sx={{ mb: 4 }}>
         <CardContent>
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Name</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 600 }}>{user?.name}</Typography>
+            </Box>
             <Box>
               <Typography variant="caption" color="text.secondary">Provider ID</Typography>
               <Typography variant="body1" sx={{ fontWeight: 600 }}>{profile.id}</Typography>
