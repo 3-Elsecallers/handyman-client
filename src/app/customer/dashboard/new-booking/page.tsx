@@ -42,13 +42,29 @@ import {
   listServices,
 } from "@/api/customer.api";
 import CustomerDashboardShell from "@/components/customer/CustomerDashboardShell";
+import LocationAutocomplete from "@/components/shared/LocationAutocomplete";
+import ProviderSearch from "@/components/customer/ProviderSearch";
+import type { LocationSelection } from "@/lib/location";
 import type { Address, Complexity, CustomerServiceCategory, GhanaRegion, PriceBreakdown, Service } from "@/types/customer";
+import type { ProviderSearchResult } from "@/api/customer.api";
 
 const COMPLEXITIES: { value: Complexity; label: string; multiplier: string }[] = [
   { value: "standard", label: "Standard", multiplier: "1.0x" },
   { value: "moderate", label: "Moderate", multiplier: "1.25x" },
   { value: "complex", label: "Complex", multiplier: "1.5x" },
 ];
+
+/**
+ * Converts an <input type="datetime-local"> value (local time, e.g.
+ * "2026-09-01T10:00") into a UTC ISO string with the timezone offset applied
+ * (e.g. "2026-09-01T14:00:00.000Z"). The backend validates dates against the
+ * strict ISO-8601 format (z.iso.datetime(), which requires seconds + Z).
+ */
+const toUtcIso = (local: string): string | undefined => {
+  if (!local) return undefined;
+  const d = new Date(local);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+};
 
 interface QuickAddressForm {
   label: string;
@@ -92,6 +108,7 @@ function NewBookingWizard() {
   const [regions, setRegions] = useState<GhanaRegion[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [quickAddressMode, setQuickAddressMode] = useState(false);
+  const [quickLocation, setQuickLocation] = useState<LocationSelection | null>(null);
 
   const [bookingType, setBookingType] = useState<"instant" | "request">("request");
   const [complexity, setComplexity] = useState<Complexity>("standard");
@@ -99,8 +116,10 @@ function NewBookingWizard() {
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
   const [providerId, setProviderId] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState<ProviderSearchResult | null>(null);
   const [description, setDescription] = useState("");
   const [promoCode, setPromoCode] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"online" | "cash">("online");
 
   const [estimate, setEstimate] = useState<PriceBreakdown | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
@@ -128,6 +147,43 @@ function NewBookingWizard() {
       setSelectedAddressId("quick");
     },
   });
+
+  /** Backfills the quick-address form + remembers the location line. */
+  const handleQuickLocationChange = (value: LocationSelection | null) => {
+    setQuickLocation(value);
+    if (!value) {
+      quickAddressFormik.setFieldValue("lat", "");
+      quickAddressFormik.setFieldValue("lng", "");
+      return;
+    }
+    quickAddressFormik.setFieldValue("lat", String(value.lat));
+    quickAddressFormik.setFieldValue("lng", String(value.lng));
+    if (value.town) quickAddressFormik.setFieldValue("town", value.town);
+    if (value.streetAndHouseNumber) {
+      quickAddressFormik.setFieldValue("streetAndHouseNumber", value.streetAndHouseNumber);
+    }
+    if (value.region) {
+      const match = regions.find(
+        (r) =>
+          r.name.toLowerCase() === value.region!.toLowerCase() ||
+          value.region!.toLowerCase().includes(r.name.toLowerCase()) ||
+          r.name.toLowerCase().includes(
+            value.region!.toLowerCase().replace(/\s+region$/, ""),
+          ),
+      );
+      const regionName = match?.name ?? value.region;
+      quickAddressFormik.setFieldValue("region", regionName);
+      if (match && value.district) {
+        const distMatch = match.districts.find(
+          (d) =>
+            d.toLowerCase() === value.district!.toLowerCase() ||
+            d.toLowerCase().includes(value.district!.toLowerCase()) ||
+            value.district!.toLowerCase().includes(d.toLowerCase()),
+        );
+        if (distMatch) quickAddressFormik.setFieldValue("district", distMatch);
+      }
+    }
+  };
 
   const selectedRegion = regions.find((r) => r.name === quickAddressFormik.values.region);
 
@@ -249,7 +305,7 @@ function NewBookingWizard() {
         type: bookingType,
         serviceId: selectedService!.id,
         providerId: bookingType === "instant" ? providerId || undefined : undefined,
-        scheduledAt: bookingType === "instant" ? scheduledAt || undefined : undefined,
+        scheduledAt: bookingType === "instant" ? toUtcIso(scheduledAt) : undefined,
         complexity,
         promoCode: promoCode || undefined,
         locationLat: locationFields.locationLat,
@@ -289,6 +345,12 @@ function NewBookingWizard() {
     setSubmitError(null);
     const loc = locationFields;
 
+    if (loc.locationLat == null || loc.locationLng == null) {
+      setSubmitError("Please provide location coordinates (via Google Places) before confirming.");
+      setSubmitting(false);
+      return;
+    }
+
     let response;
     if (bookingType === "instant") {
       if (!providerId.trim()) {
@@ -300,7 +362,7 @@ function NewBookingWizard() {
         type: "instant",
         serviceId: selectedService.id,
         providerId: providerId.trim(),
-        scheduledAt: scheduledAt,
+        scheduledAt: toUtcIso(scheduledAt) ?? scheduledAt,
         complexity,
         promoCode: promoCode || undefined,
         locationLine1: loc.locationLine1,
@@ -310,13 +372,14 @@ function NewBookingWizard() {
         locationPostal: loc.locationPostal,
         locationLat: loc.locationLat,
         locationLng: loc.locationLng,
+        paymentMethod,
       });
     } else {
       response = await createRequestBooking({
         type: "request",
         serviceId: selectedService.id,
-        scheduledWindowStart: windowStart,
-        scheduledWindowEnd: windowEnd,
+        scheduledWindowStart: toUtcIso(windowStart) ?? windowStart,
+        scheduledWindowEnd: toUtcIso(windowEnd) ?? windowEnd,
         complexity,
         description: description || undefined,
         locationLine1: loc.locationLine1,
@@ -326,6 +389,7 @@ function NewBookingWizard() {
         locationPostal: loc.locationPostal,
         locationLat: loc.locationLat,
         locationLng: loc.locationLng,
+        paymentMethod,
       });
     }
 
@@ -448,7 +512,7 @@ function NewBookingWizard() {
               {services.map((service) => (
                 <Grid size={{ xs: 12, sm: 6, md: 4 }} key={service.id}>
                   <Card variant="outlined">
-                    <CardActionArea onClick={() => handlePickService(service)}>
+                    <CardActionArea onClick={() => handlePickService(service)} sx={{ fontFamily: "inherit" }}>
                       <CardContent>
                         <Typography variant="h6" gutterBottom>
                           {service.name}
@@ -566,6 +630,12 @@ function NewBookingWizard() {
                 Quick Address
               </Typography>
               <Box component="form" onSubmit={quickAddressFormik.handleSubmit} noValidate>
+                <LocationAutocomplete
+                  value={quickLocation}
+                  onChange={handleQuickLocationChange}
+                  label="Find your location"
+                  hint="Searching your address auto-fills region, district, town and coordinates."
+                />
                 <Grid container spacing={2}>
                   <Grid size={6}>
                     <TextField
@@ -670,28 +740,6 @@ function NewBookingWizard() {
                       helperText={quickAddressFormik.touched.contactPhone && quickAddressFormik.errors.contactPhone}
                     />
                   </Grid>
-                  <Grid size={6}>
-                    <TextField
-                      fullWidth
-                      margin="dense"
-                      id="lat"
-                      name="lat"
-                      label="Latitude (optional)"
-                      value={quickAddressFormik.values.lat}
-                      onChange={quickAddressFormik.handleChange}
-                    />
-                  </Grid>
-                  <Grid size={6}>
-                    <TextField
-                      fullWidth
-                      margin="dense"
-                      id="lng"
-                      name="lng"
-                      label="Longitude (optional)"
-                      value={quickAddressFormik.values.lng}
-                      onChange={quickAddressFormik.handleChange}
-                    />
-                  </Grid>
                 </Grid>
                 <Button type="submit" variant="contained" sx={{ mt: 2 }}>
                   Use This Address
@@ -786,13 +834,13 @@ function NewBookingWizard() {
                   />
                 </Grid>
                 <Grid size={6}>
-                  <TextField
-                    fullWidth
-                    margin="dense"
-                    label="Provider ID"
-                    value={providerId}
-                    onChange={(e) => setProviderId(e.target.value)}
-                    helperText="Enter the provider ID for the specific provider."
+                  <ProviderSearch
+                    serviceId={selectedService?.id}
+                    value={selectedProvider}
+                    onChange={(provider) => {
+                      setSelectedProvider(provider);
+                      setProviderId(provider ? provider.id : "");
+                    }}
                   />
                 </Grid>
               </Grid>
@@ -801,9 +849,6 @@ function NewBookingWizard() {
 
           <Card variant="outlined" sx={{ mb: 2 }}>
             <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Price Breakdown
-              </Typography>
               <TextField
                 fullWidth
                 margin="dense"
@@ -812,6 +857,36 @@ function NewBookingWizard() {
                 onChange={(e) => setPromoCode(e.target.value)}
                 sx={{ maxWidth: 280, mb: 1 }}
               />
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                Payment Method
+              </Typography>
+              <FormControl fullWidth sx={{ maxWidth: 320 }}>
+                <InputLabel>Payment Method</InputLabel>
+                <Select
+                  value={paymentMethod}
+                  label="Payment Method"
+                  onChange={(e) => setPaymentMethod(e.target.value as "online" | "cash")}
+                >
+                  <MenuItem value="online">Pay online after service (card / mobile money)</MenuItem>
+                  <MenuItem value="cash">Pay by cash after service</MenuItem>
+                </Select>
+              </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                You’ll settle payment after the service is completed.
+              </Typography>
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Price Breakdown
+              </Typography>
               {estimateError && (
                 <Alert severity="error" sx={{ mb: 1 }}>
                   {estimateError}

@@ -29,6 +29,7 @@ import Typography from "@mui/material/Typography";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
+import AssignmentIcon from "@mui/icons-material/Assignment";
 
 import {
   getMyProfile,
@@ -49,6 +50,17 @@ const AddServiceSchema = Yup.object().shape({
     .nullable()
     .optional(),
 });
+
+function ServiceStatusChip({ status }: { status?: string }) {
+  const map: Record<string, { label: string; color: "success" | "error" | "warning" | "info" | "default" }> = {
+    "approved": { label: "Approved", color: "success" },
+    "rejected": { label: "Rejected", color: "error" },
+    "pending_review": { label: "Pending Review", color: "warning" },
+    "not_submitted": { label: "Not Submitted", color: "default" },
+  };
+  const entry = map[status ?? ""] ?? { label: "Not Submitted", color: "default" as const };
+  return <Chip label={entry.label} color={entry.color} size="small" />;
+}
 
 export default function MyServicesPage() {
   const router = useRouter();
@@ -166,22 +178,29 @@ export default function MyServicesPage() {
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   {entry.service.name}
                 </Typography>
-                <Chip
-                  label={entry.isActive ? "Active" : "Inactive"}
-                  color={entry.isActive ? "success" : "default"}
-                  size="small"
-                />
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <ServiceStatusChip status={entry.status} />
+                  <Chip
+                    label={entry.isActive ? "Active" : "Inactive"}
+                    color={entry.isActive ? "success" : "default"}
+                    size="small"
+                  />
+                </Box>
               </Box>
 
               <Divider sx={{ my: 1 }} />
 
+              {entry.status === "rejected" && entry.rejectionNote && (
+                <Alert severity="error" sx={{ mb: 1 }}>{entry.rejectionNote}</Alert>
+              )}
+
               <Box sx={{ mb: 1 }}>
                 <Typography variant="body2" color="text.secondary">
-                  Base Price: <strong>₦{entry.service.basePrice.toLocaleString()}</strong>
+                  Base Price: <strong>₵{entry.service.basePrice.toLocaleString()}</strong>
                 </Typography>
                 {entry.customPrice != null && (
                   <Typography variant="body2" color="text.secondary">
-                    Custom Price: <strong>₦{entry.customPrice.toLocaleString()}</strong>
+                    Custom Price: <strong>₵{entry.customPrice.toLocaleString()}</strong>
                   </Typography>
                 )}
                 <Typography variant="body2" color="text.secondary">
@@ -189,14 +208,24 @@ export default function MyServicesPage() {
                 </Typography>
               </Box>
 
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<EditIcon />}
-                onClick={() => router.push(`/provider/dashboard/my-services/${entry.id}`)}
-              >
-                Edit
-              </Button>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<EditIcon />}
+                  onClick={() => router.push(`/provider/dashboard/my-services/${entry.id}`)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant={entry.status === "approved" ? "outlined" : "contained"}
+                  size="small"
+                  startIcon={<AssignmentIcon />}
+                  onClick={() => router.push(`/provider/dashboard/requirements?serviceId=${entry.id}`)}
+                >
+                  {entry.status === "pending_review" ? "View Requirements" : "Complete Requirements"}
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         ))}
@@ -262,7 +291,7 @@ export default function MyServicesPage() {
                         )}
                         {catalogServices.map((svc) => (
                           <MenuItem key={svc.id} value={svc.id}>
-                            {svc.name} — ₦{svc.basePrice.toLocaleString()}
+                            {svc.name} — ₵{svc.basePrice.toLocaleString()}
                           </MenuItem>
                         ))}
                       </Select>

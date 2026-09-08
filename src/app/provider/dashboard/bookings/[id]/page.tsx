@@ -16,6 +16,7 @@ import {
   buildServiceNameMap,
   completeBooking,
   confirmBooking,
+  confirmCash,
   declineBooking,
   getBooking,
   getBookingTimeline,
@@ -357,6 +358,53 @@ export default function ProviderBookingDetailPage() {
         >
           Mark Complete
         </Button>
+      )}
+
+      {booking.status === "completed" && (
+        <Card variant="outlined" sx={{ mt: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Payment
+            </Typography>
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Method</Typography>
+                <Typography>{booking.paymentMethod === "cash" ? "Cash" : "Online"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Status</Typography>
+                <Typography sx={{ textTransform: "capitalize" }}>
+                  {(booking.paymentStatus ?? "pending").replace(/_/g, " ")}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Expected</Typography>
+                <Typography>GH₵ {(booking.paymentAmountExpected ?? 0).toFixed(2)}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Due</Typography>
+                <Typography>{formatDate(booking.paymentDueAt ?? null)}</Typography>
+              </Box>
+            </Box>
+            {booking.paymentOverdue && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                This payment is overdue.
+              </Alert>
+            )}
+            {booking.paymentMethod === "cash" &&
+              booking.paymentStatus === "cash_outstanding" && (
+                <Button
+                  variant="contained"
+                  color="success"
+                  sx={{ mt: 2 }}
+                  onClick={() => runAction(() => confirmCash(booking.id), "Cash confirmed as received.")}
+                  disabled={actionLoading}
+                >
+                  Confirm Cash Received
+                </Button>
+              )}
+          </CardContent>
+        </Card>
       )}
 
       <ConfirmDialog

@@ -11,6 +11,12 @@ export interface ProviderProfile {
   verified: boolean;
   status: "pending_review" | "active" | "suspended" | "deactivated";
   verificationStatus: "not_submitted" | "pending_review" | "approved" | "rejected";
+  identityVerified?: boolean;
+  identityStatus?: "not_submitted" | "pending_review" | "approved" | "rejected";
+  identityRejectionNote?: string | null;
+  competencyTier?: string;
+  qualityGrade?: string;
+  probationaryBookingsRemaining?: number | null;
   rejectionNote: string | null;
   serviceAreaRadiusKm: number;
   lat: number | null;
@@ -27,6 +33,10 @@ export interface ProviderServiceEntry {
   serviceId: string;
   customPrice: number | null;
   isActive: boolean;
+  status?: "not_submitted" | "pending_review" | "approved" | "rejected";
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
   createdAt: string;
   service: CatalogService;
 }
@@ -113,12 +123,13 @@ export interface PaginatedReviews {
   totalPages: number;
 }
 
-export type DocumentCategory = "selfie" | "ghana_card" | "additional";
+export type DocumentCategory = string;
 export type DocumentStatus = "uploaded" | "pending_review" | "approved" | "rejected";
 
 export interface ProviderDocument {
   id: string;
   providerId: string;
+  requirementId: string | null;
   category: DocumentCategory;
   s3Key: string;
   fileName: string;
@@ -134,8 +145,73 @@ export interface UploadUrlItem {
   id: string;
   uploadUrl: string;
   s3Key: string;
-  category: DocumentCategory;
+  category: string;
   fileName: string;
   fileSize: number;
   mimeType: string;
+}
+
+export type VettingRequirementType = "document" | "attestation" | "certification";
+export type VettingSubmissionStatus = "not_submitted" | "pending_review" | "approved" | "submitted" | "rejected" | null;
+
+export interface VettingRequirement {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  type: VettingRequirementType;
+  name: string;
+  description: string | null;
+  isRequired: boolean;
+  acceptedMimeTypes: string[];
+  maxFileSizeMb: number;
+  sortOrder: number;
+  submissionStatus: VettingSubmissionStatus;
+  documentId: string | null;
+  mimeType: string | null;
+  fileName: string | null;
+  rejectionReason: string | null;
+  answer: string | null;
+  attestationId: string | null;
+}
+
+export type VettingQuestionType = "yes_no" | "text" | "single_choice" | "multiple_choice";
+
+export interface VettingQuestion {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  question: string;
+  type: VettingQuestionType;
+  options: string[];
+  isRequired: boolean;
+  sortOrder: number;
+  answer: string | null;
+  answerId: string | null;
+}
+
+export interface VettingRequirementsResponse {
+  requirements: VettingRequirement[];
+  providerVerificationStatus: string | null;
+  identityStatus?: string | null;
+}
+
+export interface VettingQuestionsResponse {
+  questions: VettingQuestion[];
+}
+
+export interface AttestationPayload {
+  requirementId: string;
+  answer: string;
+}
+
+export interface QuestionAnswerPayload {
+  questionId: string;
+  answer: string;
+}
+
+export interface ProviderIdentity {
+  identityStatus: "not_submitted" | "pending_review" | "approved" | "rejected";
+  identityVerified: boolean;
+  identityRejectionNote: string | null;
+  documents: ProviderDocument[];
 }

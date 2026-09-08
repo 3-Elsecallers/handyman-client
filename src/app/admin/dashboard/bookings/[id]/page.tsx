@@ -20,6 +20,8 @@ import {
   getBookingTimeline,
   resolveDispute,
 } from "@/api/booking.api";
+import { listAdminPayments, type Payment } from "@/api/payment.api";
+import PaymentStatusChip from "@/components/admin/PaymentStatusChip";
 import StatusChip from "@/components/admin/StatusChip";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import type { Booking, BookingTimelineEntry } from "@/types/customer";
@@ -60,6 +62,10 @@ export default function AdminBookingDetailPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [pendingResolve, setPendingResolve] = useState<"completed" | "cancelled" | null>(null);
 
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -90,6 +96,23 @@ export default function AdminBookingDetailPage() {
     async function load() { await fetchData(); }
     load();
   }, [fetchData]);
+
+  const fetchPayments = useCallback(async () => {
+    setPaymentsLoading(true);
+    setPaymentsError(null);
+    const response = await listAdminPayments({ bookingId: id, limit: 50 });
+    if (response?.status === 200 && response.data.data) {
+      setPayments(response.data.data.payments);
+    } else {
+      setPaymentsError(response?.data?.message || "Failed to load transaction history.");
+    }
+    setPaymentsLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    async function load() { await fetchPayments(); }
+    load();
+  }, [fetchPayments]);
 
   const handleResolve = async () => {
     if (!pendingResolve) return;
@@ -149,6 +172,7 @@ export default function AdminBookingDetailPage() {
 
       <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
         <StatusChip status={booking.status} />
+        <PaymentStatusChip status={booking.paymentStatus ?? "pending"} />
         <Typography variant="body2" color="text.secondary">
           ID: <span style={{ fontFamily: "monospace" }}>{booking.id}</span>
         </Typography>
@@ -259,6 +283,105 @@ export default function AdminBookingDetailPage() {
                 Refund Amount: GH₵ {(booking.refundAmount ?? 0).toFixed(2)}
               </Typography>
             </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Transaction History
+          </Typography>
+          {paymentsError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {paymentsError}
+            </Alert>
+          )}
+          {paymentsLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : payments.length === 0 ? (
+            <Typography color="text.secondary">No payments recorded for this booking.</Typography>
+          ) : (
+            payments.map((payment) => (
+              <Box
+                key={payment.id}
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  p: 2,
+                  mb: 2,
+                }}
+              >
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ textTransform: "capitalize" }}>
+                    {payment.type === "tip" ? "Tip" : "Booking Payment"}
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                    <PaymentStatusChip status={payment.status} />
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(payment.createdAt).toLocaleString()}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, mb: 1 }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Amount</Typography>
+                    <Typography>GH₵ {payment.amount.toFixed(2)}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Reference</Typography>
+                    <Typography sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                      {payment.paystackRef || "—"}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Platform Fee</Typography>
+                    <Typography>GH₵ {payment.platformFee.toFixed(2)}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Provider Earning</Typography>
+                    <Typography>GH₵ {payment.providerEarning.toFixed(2)}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Tip</Typography>
+                    <Typography>GH₵ {payment.tipAmount.toFixed(2)}</Typography>
+                  </Box>
+                  {payment.refundedAmount > 0 && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">Refunded Total</Typography>
+                      <Typography>GH₵ {payment.refundedAmount.toFixed(2)}</Typography>
+                    </Box>
+                  )}
+                </Box>
+                {payment.refunds && payment.refunds.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                      Refunds
+                    </Typography>
+                    {payment.refunds.map((refund) => (
+                      <Box key={refund.id} sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            GH₵ {refund.amount.toFixed(2)}
+                          </Typography>
+                          {refund.reason && (
+                            <Typography variant="caption" color="text.secondary">
+                              {refund.reason}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          {refund.status} · {new Date(refund.createdAt).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            ))
           )}
         </CardContent>
       </Card>

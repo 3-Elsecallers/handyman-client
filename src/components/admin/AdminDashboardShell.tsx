@@ -25,8 +25,10 @@ import AuditIcon from '@mui/icons-material/History';
 import EventIcon from '@mui/icons-material/Event';
 import PercentIcon from '@mui/icons-material/Percent';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import MenuIcon from '@mui/icons-material/Menu';
 import NotificationIcon from '@mui/icons-material/Notifications';
+import PaymentsIcon from '@mui/icons-material/Payments';
 
 import AdminNavItem from '@/components/admin/AdminNavItem';
 import SignOutDialog from '@/components/dashboard/SignOutDialog';
@@ -42,7 +44,9 @@ const NAV_ITEMS = [
   { label: 'Categories', icon: <CategoryIcon />, href: '/admin/dashboard/categories' },
   { label: 'Services', icon: <ServiceIcon />, href: '/admin/dashboard/services' },
   { label: 'Reviews', icon: <ReviewIcon />, href: '/admin/dashboard/reviews' },
+  { label: 'Quality', icon: <MilitaryTechIcon />, href: '/admin/dashboard/quality' },
   { label: 'Bookings', icon: <EventIcon />, href: '/admin/dashboard/bookings' },
+  { label: 'Finance', icon: <PaymentsIcon />, href: '/admin/dashboard/finance' },
   { label: 'Promo Codes', icon: <PercentIcon />, href: '/admin/dashboard/promos' },
   { label: 'Audit Log', icon: <AuditIcon />, href: '/admin/dashboard/audit-log' },
 ];
@@ -57,27 +61,6 @@ export default function AdminDashboardShell({
   const router = useRouter();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
-
-  useEffect(() => {
-    let mounted = true;
-    async function fetchCount() {
-      try {
-        const response = await getVerificationQueueCount();
-        if (mounted && response?.status === 200 && response.data.data) {
-          setPendingCount(response.data.data.count);
-        }
-      } catch {
-        // silent
-      }
-    }
-    fetchCount();
-    const interval = setInterval(fetchCount, 60000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
 
   const drawer = (
     <Box>
@@ -93,7 +76,7 @@ export default function AdminDashboardShell({
           <AdminNavItem
             key={item.href}
             {...item}
-            badgeCount={item.badge ? pendingCount : undefined}
+            badgeCount={undefined}
           />
         ))}
       </List>
@@ -127,9 +110,9 @@ export default function AdminDashboardShell({
           <IconButton
             color="inherit"
             sx={{ mr: 1 }}
-            onClick={() => router.push('/admin/dashboard/providers')}
+            // onClick={}
           >
-            <Badge badgeContent={pendingCount} color="error" max={99}>
+            <Badge badgeContent={undefined} color="error" max={99}>
               <NotificationIcon />
             </Badge>
           </IconButton>

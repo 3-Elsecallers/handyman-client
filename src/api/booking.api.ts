@@ -89,10 +89,29 @@ export async function completeBooking(id: string) {
   }
 }
 
+export async function markPaid(id: string) {
+  try {
+    const response = await axios.put<{ data: Booking }>(`/bookings/${id}/mark-paid`);
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function confirmCash(id: string) {
+  try {
+    const response = await axios.put<{ data: Booking }>(`/bookings/${id}/confirm-cash`);
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
 export async function listAllBookings(params?: {
   status?: BookingStatus;
   search?: string;
   providerId?: string;
+  customerId?: string;
   page?: number;
   limit?: number;
 }) {
@@ -102,6 +121,7 @@ export async function listAllBookings(params?: {
         ...(params?.status && { status: params.status }),
         ...(params?.search && { search: params.search }),
         ...(params?.providerId && { providerId: params.providerId }),
+        ...(params?.customerId && { customerId: params.customerId }),
         ...(params?.page && { page: params.page }),
         ...(params?.limit && { limit: params.limit }),
       },

@@ -38,6 +38,17 @@ export type BookingStatus =
   | "completed"
   | "cancelled"
   | "disputed";
+export type BookingPaymentStatus =
+  | "pending"
+  | "accepted"
+  | "in_progress"
+  | "cash_outstanding"
+  | "cash_collected"
+  | "paid"
+  | "confirmed"
+  | "failed"
+  | "refunded";
+export type BookingPaymentMethod = "online" | "cash";
 export type Complexity = "standard" | "moderate" | "complex";
 
 export interface BookingInvite {
@@ -58,6 +69,12 @@ export interface Booking {
   serviceId: string;
   type: BookingType;
   status: BookingStatus;
+  paymentStatus?: BookingPaymentStatus;
+  paymentMethod?: BookingPaymentMethod;
+  paymentOverdue?: boolean;
+  paymentConfirmedAt?: string | null;
+  paymentDueAt?: string | null;
+  paymentAmountExpected?: number;
   scheduledAt: string | null;
   scheduledWindowEnd: string | null;
   completedAt: string | null;

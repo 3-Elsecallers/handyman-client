@@ -4,6 +4,7 @@ import { isAxiosError } from "axios";
 import type {
   ProviderProfile,
   ProviderDocument,
+  ProviderIdentity,
   UploadUrlItem,
   AvailabilitySlot,
   BlockedSlot,
@@ -11,6 +12,10 @@ import type {
   PaginatedReviews,
   CatalogService,
   ServiceCategory,
+  VettingRequirementsResponse,
+  VettingQuestionsResponse,
+  AttestationPayload,
+  QuestionAnswerPayload,
 } from "@/types/provider";
 
 export async function getMyProfile() {
@@ -209,6 +214,7 @@ export async function requestDocumentUploadUrls(files: {
   fileSize: number;
   mimeType: string;
   category: string;
+  requirementId?: string;
 }[]) {
   try {
     const response = await axios.post<{ data: UploadUrlItem[] }>(
@@ -275,4 +281,109 @@ export async function getTestImage() {
   } catch (error: unknown) {
     return isAxiosError(error) ? error.response : undefined;
   }
+}
+
+export async function getMyRequirements(serviceId?: string) {
+  try {
+    const response = await axios.get<{ data: VettingRequirementsResponse }>(
+      "/providers/me/requirements",
+      { params: serviceId ? { serviceId } : {} },
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getMyQuestions(serviceId?: string) {
+  try {
+    const response = await axios.get<{ data: VettingQuestionsResponse }>(
+      "/providers/me/questions",
+      { params: serviceId ? { serviceId } : {} },
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function submitAttestations(data: {
+  attestations: AttestationPayload[];
+  questions: QuestionAnswerPayload[];
+}, serviceId?: string) {
+  try {
+    const response = await axios.post<{ data: { message: string } }>(
+      "/providers/me/attestations",
+      data,
+      { params: serviceId ? { serviceId } : {} },
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getMyIdentity() {
+  try {
+    const response = await axios.get<{ data: ProviderIdentity }>(
+      "/providers/me/identity",
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function submitServiceForReview(providerServiceId: string) {
+  try {
+    const response = await axios.post<{ data: ProviderProfile["services"][number] }>(
+      `/providers/me/services/${providerServiceId}/submit`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getMyScorecard() {
+  try {
+    const response = await axios.get<{ data: ScorecardData }>("/providers/me/scorecard");
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export interface ProviderQualityFlagData {
+  id: string;
+  providerId: string;
+  code: string;
+  message: string;
+  severity: string;
+  active: boolean;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface ScorecardData {
+  scorecard: {
+    tier: string;
+    grade: string;
+    probation: {
+      active: boolean;
+      bookingsRemaining: number;
+      endDate: string | null;
+    };
+    metrics: {
+      avgRating: number;
+      totalReviews: number;
+      totalJobs: number;
+      completionRate: number;
+      cancellationRate: number;
+      disputeRate: number;
+      avgResponseTimeMins: number | null;
+    };
+    tenureDays: number;
+  };
+  flags: ProviderQualityFlagData[];
 }

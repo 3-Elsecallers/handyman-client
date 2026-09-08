@@ -83,7 +83,7 @@ export default function AdminDashboardPage() {
             <Card variant="outlined" sx={{ height: "100%" }}>
               <CardActionArea
                 onClick={() => router.push(section.href)}
-                sx={{ height: "100%" }}
+                sx={{ height: "100%", fontFamily: "inherit" }}
               >
                 <CardContent sx={{ textAlign: "center", py: 4 }}>
                   <Box sx={{ color: "primary.main", mb: 2 }}>

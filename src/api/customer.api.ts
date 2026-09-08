@@ -170,6 +170,7 @@ export interface BookingProvider {
   name?: string;
   avatarUrl?: string;
   bio?: string | null;
+  phone?: string | null;
   avgRating?: number;
   totalJobs?: number;
   avgResponseTimeMins?: number | null;
@@ -181,6 +182,41 @@ export async function getBookingProvider(id: string) {
     const response = await axios.get<{ data: BookingProvider }>(
       `/bookings/${id}/provider`,
     );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export interface ProviderSearchResult {
+  id: string;
+  userId: string;
+  bio: string | null;
+  avgRating: number;
+  totalJobs: number;
+  verified: boolean;
+  user?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+  } | null;
+}
+
+export interface SearchProvidersParams {
+  q?: string;
+  serviceId?: string;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+  limit?: number;
+}
+
+export async function searchProviders(params: SearchProvidersParams = {}) {
+  try {
+    const response = await axios.get<{
+      data: { providers: ProviderSearchResult[]; total: number };
+    }>("/search/providers", { params });
     return response;
   } catch (error: unknown) {
     return isAxiosError(error) ? error.response : undefined;
@@ -225,6 +261,7 @@ export interface CreateInstantBookingInput extends LocationInput {
   complexity: Complexity;
   promoCode?: string;
   notes?: string;
+  paymentMethod?: "online" | "cash";
 }
 
 export async function createInstantBooking(input: CreateInstantBookingInput) {
@@ -243,6 +280,7 @@ export interface CreateRequestBookingInput extends LocationInput {
   scheduledWindowEnd: string;
   complexity: Complexity;
   description?: string;
+  paymentMethod?: "online" | "cash";
 }
 
 export async function createRequestBooking(input: CreateRequestBookingInput) {
@@ -317,6 +355,64 @@ export async function submitReview(id: string, input: ReviewInput) {
     const response = await axios.post<{ data: ReviewResult }>(
       `/bookings/${id}/review`,
       input,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export interface AvatarUploadUrlResult {
+  uploadUrl: string;
+  s3Key: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+}
+
+export interface MyUserProfile {
+  id: string;
+  email: string;
+  phone: string | null;
+  role: string;
+  status: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string | null;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+}
+
+export async function getMyUserProfile() {
+  try {
+    const response = await axios.get<{ data: MyUserProfile }>("/customers/me");
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function requestAvatarUploadUrl(input: {
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+}) {
+  try {
+    const response = await axios.post<{ data: AvatarUploadUrlResult }>(
+      "/customers/me/avatar/request-url",
+      input,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function updateAvatar(avatarUrl: string) {
+  try {
+    const response = await axios.post<{ data: { avatarUrl: string } }>(
+      "/customers/me/avatar",
+      { avatarUrl },
     );
     return response;
   } catch (error: unknown) {

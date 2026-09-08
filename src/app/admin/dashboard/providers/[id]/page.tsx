@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -15,7 +16,6 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
@@ -23,18 +23,34 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import VisibilityIcon from "@mui/icons-material/Visibility";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ImageNotSupportedIcon from "@mui/icons-material/ImageNotSupported";
 
-import { getProviderDetail, verifyProvider, getDocumentFile, getProviderReviews } from "@/api/admin.api";
+import {
+  getProviderDetail,
+  getProviderIdentity,
+  reviewIdentity,
+  getProviderServiceList,
+  getProviderServiceChecklist,
+  reviewProviderService,
+  getProviderReviews,
+  getDocumentFile,
+  reviewProviderDocument,
+} from "@/api/admin.api";
 import { listAllBookings, buildServiceNameMap } from "@/api/booking.api";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import StatusChip from "@/components/admin/StatusChip";
 import AdminTable from "@/components/admin/AdminTable";
 import AdminPagination from "@/components/admin/AdminPagination";
 import type { AdminTableColumn } from "@/components/admin/AdminTable";
-import type { ProviderDetail, ProviderDocument, Review } from "@/types/admin";
+import type {
+  ProviderDetail,
+  ProviderDocument,
+  ProviderIdentity,
+  ProviderService,
+  ProviderServiceChecklist,
+  Review,
+  VerificationStatus,
+} from "@/types/admin";
 import type { Booking } from "@/types/customer";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -43,7 +59,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   additional: "Additional Document",
 };
 
-function statusColor(status: string): "success" | "error" | "warning" | "default" {
+function statusColor(status: string | undefined): "success" | "error" | "warning" | "default" {
   switch (status) {
     case "approved": return "success";
     case "rejected": return "error";
@@ -52,8 +68,13 @@ function statusColor(status: string): "success" | "error" | "warning" | "default
   }
 }
 
-function docStatusLabel(status: string): string {
-  return status.replace("_", " ");
+function VerificationStatusChip({ status }: { status?: VerificationStatus }) {
+  const label = (status ?? "not_submitted").replace(/_/g, " ");
+  return <Chip label={label} size="small" color={statusColor(status)} />;
+}
+
+function statusLabel(status: string): string {
+  return status.replace(/_/g, " ");
 }
 
 export default function ProviderDetailPage() {
@@ -64,15 +85,36 @@ export default function ProviderDetailPage() {
   const [provider, setProvider] = useState<ProviderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingApproved, setPendingApproved] = useState(true);
-  const [rejectionNote, setRejectionNote] = useState("");
-  const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
+
+  const [identity, setIdentity] = useState<ProviderIdentity | null>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
+  const [identityConfirmOpen, setIdentityConfirmOpen] = useState(false);
+  const [identityApproved, setIdentityApproved] = useState(true);
+  const [identityRejectionNote, setIdentityRejectionNote] = useState("");
+
+  const [providerServices, setProviderServices] = useState<ProviderService[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [reviewService, setReviewService] = useState<ProviderService | null>(null);
+  const [serviceChecklist, setServiceChecklist] = useState<ProviderServiceChecklist | null>(null);
+  const [serviceChecklistLoading, setServiceChecklistLoading] = useState(false);
+  const [serviceConfirmOpen, setServiceConfirmOpen] = useState(false);
+  const [serviceApproved, setServiceApproved] = useState(true);
+  const [serviceRejectionNote, setServiceRejectionNote] = useState("");
+
+  const [previewDocument, setPreviewDocument] = useState<{
+    id: string;
+    mimeType?: string;
+    fileName?: string;
+    status?: string;
+  } | null>(null);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
+  const [reviewTarget, setReviewTarget] = useState<{ documentId: string; name: string } | null>(null);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewsTotal, setReviewsTotal] = useState(0);
@@ -97,6 +139,24 @@ export default function ProviderDetailPage() {
       setError(response?.data?.message || "Failed to load provider details.");
     }
     setLoading(false);
+  }, [id]);
+
+  const fetchIdentity = useCallback(async () => {
+    setIdentityLoading(true);
+    const response = await getProviderIdentity(id);
+    if (response?.status === 200 && response.data.data) {
+      setIdentity(response.data.data);
+    }
+    setIdentityLoading(false);
+  }, [id]);
+
+  const fetchServices = useCallback(async () => {
+    setServicesLoading(true);
+    const response = await getProviderServiceList(id);
+    if (response?.status === 200 && response.data.data) {
+      setProviderServices(response.data.data);
+    }
+    setServicesLoading(false);
   }, [id]);
 
   const fetchReviews = useCallback(async (page: number) => {
@@ -125,14 +185,18 @@ export default function ProviderDetailPage() {
 
   useEffect(() => {
     async function load() {
-      await fetchProvider();
-      await fetchReviews(1);
-      await fetchBookings(1);
+      await Promise.all([
+        fetchProvider(),
+        fetchIdentity(),
+        fetchServices(),
+        fetchReviews(1),
+        fetchBookings(1),
+      ]);
       const names = await buildServiceNameMap();
       setServiceNameMap(names);
     }
     load();
-  }, [fetchProvider, fetchReviews, fetchBookings]);
+  }, [fetchProvider, fetchIdentity, fetchServices, fetchReviews, fetchBookings]);
 
   useEffect(() => {
     return () => {
@@ -140,35 +204,42 @@ export default function ProviderDetailPage() {
     };
   }, [previewUrls]);
 
-  const handleVerify = async () => {
-    setActionLoading(true);
+  const refreshAll = async () => {
+    await Promise.all([fetchProvider(), fetchIdentity(), fetchServices()]);
+  };
+
+  const openIdentityConfirm = (approved: boolean) => {
+    setIdentityApproved(approved);
+    setIdentityRejectionNote("");
+    setIdentityConfirmOpen(true);
     setActionError(null);
     setActionSuccess(null);
-    const response = await verifyProvider(id, pendingApproved, pendingApproved ? undefined : rejectionNote);
+  };
+
+  const handleIdentityConfirm = async () => {
+    if (!identityApproved && !identityRejectionNote.trim()) return;
+    setIdentityLoading(true);
+    setActionError(null);
+    setActionSuccess(null);
+    const response = await reviewIdentity(
+      id,
+      identityApproved,
+      identityApproved ? undefined : identityRejectionNote.trim(),
+    );
     if (response?.status === 200) {
       setActionSuccess(
-        pendingApproved
-          ? "Provider has been approved and verified."
-          : "Provider has been rejected."
+        identityApproved
+          ? "Identity verification approved."
+          : "Identity verification rejected."
       );
-      fetchProvider();
+      setIdentityConfirmOpen(false);
+      await refreshAll();
     } else {
       setActionError(response?.data?.message || "Action failed. Please try again.");
     }
-    setActionLoading(false);
-    setConfirmOpen(false);
-    setRejectionNote("");
+    setIdentityLoading(false);
+    setIdentityRejectionNote("");
   };
-
-  const openConfirm = (approved: boolean) => {
-    setPendingApproved(approved);
-    setActionError(null);
-    setActionSuccess(null);
-    setRejectionNote("");
-    setConfirmOpen(true);
-  };
-
-  const carouselDocuments = provider?.providerDocuments || [];
 
   const ensurePreviewUrl = useCallback(
     async (documentId: string) => {
@@ -183,21 +254,93 @@ export default function ProviderDetailPage() {
     [previewUrls],
   );
 
-  const openCarousel = (documentId: string) => {
-    const index = carouselDocuments.findIndex((d) => d.id === documentId);
-    setCarouselIndex(index >= 0 ? index : 0);
-    ensurePreviewUrl(documentId);
+  const openPreview = async (doc: { id: string; mimeType?: string; fileName?: string; status?: string }) => {
+    setPreviewDocument(doc);
+    await ensurePreviewUrl(doc.id);
   };
 
-  const closeCarousel = () => setCarouselIndex(null);
+  const handleApproveDocument = async (documentId: string) => {
+    setReviewLoading(true);
+    const res = await reviewProviderDocument(documentId, { approved: true });
+    if (res?.status === 200) {
+      await refreshAll();
+    }
+    setReviewLoading(false);
+  };
 
-  const stepCarousel = (delta: number) => {
-    setCarouselIndex((current) => {
-      if (current === null || carouselDocuments.length === 0) return current;
-      const next = (current + delta + carouselDocuments.length) % carouselDocuments.length;
-      ensurePreviewUrl(carouselDocuments[next].id);
-      return next;
+  const openRejectDialog = (documentId: string, name: string) => {
+    setReviewTarget({ documentId, name });
+    setRejectReason("");
+    setRejectDialogOpen(true);
+  };
+
+  const handleRejectDocument = async () => {
+    if (!reviewTarget || !rejectReason.trim()) return;
+    setReviewLoading(true);
+    const res = await reviewProviderDocument(reviewTarget.documentId, {
+      approved: false,
+      rejectionReason: rejectReason.trim(),
     });
+    if (res?.status === 200) {
+      setRejectDialogOpen(false);
+      setReviewTarget(null);
+      await refreshAll();
+    }
+    setReviewLoading(false);
+  };
+
+  const closePreview = () => setPreviewDocument(null);
+
+  const openServiceChecklist = async (service: ProviderService) => {
+    setReviewService(service);
+    setServiceChecklist(null);
+    setServiceChecklistLoading(true);
+    const response = await getProviderServiceChecklist(id, service.id);
+    if (response?.status === 200 && response.data.data) {
+      setServiceChecklist(response.data.data);
+    }
+    setServiceChecklistLoading(false);
+  };
+
+  const closeServiceChecklist = () => {
+    setReviewService(null);
+    setServiceChecklist(null);
+  };
+
+  const openServiceConfirm = (approved: boolean) => {
+    setServiceApproved(approved);
+    setServiceRejectionNote("");
+    setServiceConfirmOpen(true);
+    setActionError(null);
+    setActionSuccess(null);
+  };
+
+  const handleServiceConfirm = async () => {
+    if (!reviewService) return;
+    if (!serviceApproved && !serviceRejectionNote.trim()) return;
+    setServiceChecklistLoading(true);
+    setActionError(null);
+    setActionSuccess(null);
+    const response = await reviewProviderService(
+      id,
+      reviewService.id,
+      serviceApproved,
+      serviceApproved ? undefined : serviceRejectionNote.trim(),
+    );
+    if (response?.status === 200) {
+      setActionSuccess(
+        serviceApproved
+          ? `"${reviewService.service?.name ?? "Service"}" approved and activated.`
+          : `"${reviewService.service?.name ?? "Service"}" rejected.`
+      );
+      setServiceConfirmOpen(false);
+      setServiceChecklist(null);
+      await refreshAll();
+    } else {
+      setActionError(response?.data?.message || "Action failed. Please try again.");
+    }
+    setServiceChecklistLoading(false);
+    setServiceRejectionNote("");
   };
 
   if (loading) {
@@ -215,9 +358,6 @@ export default function ProviderDetailPage() {
       </Alert>
     );
   }
-
-  const documentsByCategory = (category: string) =>
-    (provider.providerDocuments || []).filter((d) => d.category === category);
 
   const reviewColumns: AdminTableColumn<Review>[] = [
     {
@@ -272,6 +412,23 @@ export default function ProviderDetailPage() {
     },
   ];
 
+  const renderDocRow = (doc: ProviderDocument, name: string) => (
+    <Box key={doc.id} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, flexWrap: "wrap" }}>
+      <Chip label={statusLabel(doc.status)} size="small" color={statusColor(doc.status)} />
+      <Typography variant="body2">{name}</Typography>
+      <Button size="small" startIcon={<VisibilityIcon />} onClick={() => openPreview({ id: doc.id, mimeType: doc.mimeType, fileName: doc.fileName, status: doc.status })} disabled={Boolean(previewLoading[doc.id])}>View</Button>
+      {doc.status === "pending_review" && (
+        <>
+          <Button size="small" color="success" startIcon={<CheckCircleIcon />} disabled={reviewLoading} onClick={() => handleApproveDocument(doc.id)}>Approve</Button>
+          <Button size="small" color="error" startIcon={<CancelIcon />} disabled={reviewLoading} onClick={() => openRejectDialog(doc.id, name)}>Reject</Button>
+        </>
+      )}
+      {doc.status === "rejected" && doc.rejectionReason && (
+        <Typography variant="caption" color="error">— {doc.rejectionReason}</Typography>
+      )}
+    </Box>
+  );
+
   return (
     <Box>
       <Button
@@ -285,6 +442,20 @@ export default function ProviderDetailPage() {
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
         {provider.user ? `${provider.user.firstName} ${provider.user.lastName}` : "Provider Details"}
       </Typography>
+      {provider.competencyTier && (
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 2 }}>
+          <Chip
+            size="small"
+            label={`${provider.competencyTier} tier`}
+            color={provider.competencyTier === "master" ? "primary" : provider.competencyTier === "journeyman" ? "info" : "default"}
+          />
+          <Chip
+            size="small"
+            label={provider.qualityGrade}
+            color={provider.qualityGrade === "platinum" ? "primary" : provider.qualityGrade === "gold" ? "warning" : provider.qualityGrade === "silver" ? "secondary" : "default"}
+          />
+        </Box>
+      )}
 
       {actionSuccess && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setActionSuccess(null)}>
@@ -321,14 +492,6 @@ export default function ProviderDetailPage() {
               <StatusChip status={provider.status} />
             </Box>
             <Box>
-              <Typography variant="body2" color="text.secondary">Verified</Typography>
-              <Chip
-                label={provider.verified ? "Yes" : "No"}
-                size="small"
-                color={provider.verified ? "success" : "default"}
-              />
-            </Box>
-            <Box>
               <Typography variant="body2" color="text.secondary">Service Area</Typography>
               <Typography>{provider.serviceAreaRadiusKm} km</Typography>
             </Box>
@@ -350,11 +513,22 @@ export default function ProviderDetailPage() {
             <Typography variant="h6" gutterBottom>
               User Information
             </Typography>
-            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+              <Avatar
+                src={provider.user.avatarUrl ?? undefined}
+                alt={`${provider.user.firstName} ${provider.user.lastName}`}
+                sx={{ width: 72, height: 72, fontSize: 28 }}
+              />
               <Box>
-                <Typography variant="body2" color="text.secondary">Name</Typography>
-                <Typography>{provider.user.firstName} {provider.user.lastName}</Typography>
+                <Typography sx={{ fontWeight: 600 }}>
+                  {provider.user.firstName} {provider.user.lastName}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {provider.user.email}
+                </Typography>
               </Box>
+            </Box>
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
               <Box>
                 <Typography variant="body2" color="text.secondary">Email</Typography>
                 <Typography>{provider.user.email}</Typography>
@@ -401,39 +575,61 @@ export default function ProviderDetailPage() {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Verification
+            Step 1 — Identity Verification
           </Typography>
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 2 }}>
-            <Box>
-              <Typography variant="body2" color="text.secondary">Verification Status</Typography>
-              <StatusChip status={provider.verificationStatus} />
-            </Box>
-            {provider.rejectionNote && (
-              <Box>
-                <Typography variant="body2" color="text.secondary">Rejection Note</Typography>
-                <Typography color="error">{provider.rejectionNote}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            The provider&apos;s identity (selfie, Ghana Card, additional documents) is reviewed
+            here before any service can be activated.
+          </Typography>
+
+          {identityLoading && !identity ? (
+            <CircularProgress size={24} />
+          ) : (
+            <>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+                <VerificationStatusChip status={identity?.identityStatus} />
               </Box>
-            )}
-          </Box>
-          {provider.verificationStatus === "pending_review" && (
-            <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<CheckCircleIcon />}
-                onClick={() => openConfirm(true)}
-              >
-                Approve
-              </Button>
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={<CancelIcon />}
-                onClick={() => openConfirm(false)}
-              >
-                Reject
-              </Button>
-            </Box>
+
+              {identity?.identityStatus === "rejected" && identity.identityRejectionNote && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>Rejection Reason:</Typography>
+                  {identity.identityRejectionNote}
+                </Alert>
+              )}
+
+              {(identity?.documents || []).length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No identity documents uploaded yet.
+                </Typography>
+              ) : (
+                identity?.documents.map((doc) =>
+                  renderDocRow(doc, CATEGORY_LABELS[doc.category] || doc.category)
+                )
+              )}
+
+              {identity?.identityStatus === "pending_review" && (
+                <Box sx={{ display: "flex", gap: 2, mt: 3 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<CheckCircleIcon />}
+                    disabled={identityLoading}
+                    onClick={() => openIdentityConfirm(true)}
+                  >
+                    Approve Identity
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<CancelIcon />}
+                    disabled={identityLoading}
+                    onClick={() => openIdentityConfirm(false)}
+                  >
+                    Reject Identity
+                  </Button>
+                </Box>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -441,167 +637,273 @@ export default function ProviderDetailPage() {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Documents
+            Step 2 — Service Verification
           </Typography>
-          {!provider.providerDocuments || provider.providerDocuments.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Each service must be verified separately against its category requirements before it
+            can be booked by customers.
+          </Typography>
+
+          {servicesLoading && providerServices.length === 0 ? (
+            <CircularProgress size={24} />
+          ) : providerServices.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No documents submitted.
+              This provider has not added any services yet.
             </Typography>
           ) : (
-            ["selfie", "ghana_card", "additional"].map((category) => {
-              const docs = documentsByCategory(category);
-              if (docs.length === 0) return null;
-              return (
-                <Box key={category} sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    {CATEGORY_LABELS[category] || category}
-                  </Typography>
-                  {docs.map((doc: ProviderDocument) => (
-                    <Box key={doc.id} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-                      <Chip
-                        label={doc.status.replace("_", " ")}
-                        size="small"
-                        color={
-                          doc.status === "approved" ? "success" :
-                          doc.status === "rejected" ? "error" :
-                          doc.status === "pending_review" ? "warning" :
-                          "default"
-                        }
-                      />
-                      <Typography variant="body2">{doc.fileName}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        ({(doc.fileSize / 1024 / 1024).toFixed(1)}MB)
-                      </Typography>
-                      <Button
-                        size="small"
-                        startIcon={<VisibilityIcon />}
-                        onClick={() => openCarousel(doc.id)}
-                        disabled={Boolean(previewLoading[doc.id])}
-                      >
-                        View
-                      </Button>
-                      {doc.status === "rejected" && doc.rejectionReason && (
-                        <Typography variant="caption" color="error">
-                          - {doc.rejectionReason}
-                        </Typography>
+            providerServices.map((service, index) => (
+              <Box key={service.id}>
+                {index > 0 && <Divider sx={{ my: 1.5 }} />}
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {service.service?.name || service.serviceId}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {service.service?.category?.name || ""}
+                      {service.customPrice !== null && (
+                        <> — Custom Price: ₵{service.customPrice.toFixed(2)}</>
                       )}
-                    </Box>
-                  ))}
-                  {category !== "additional" && <Divider sx={{ mt: 1 }} />}
+                    </Typography>
+                    {service.status === "rejected" && service.rejectionNote && (
+                      <Typography variant="caption" color="error">— {service.rejectionNote}</Typography>
+                    )}
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <VerificationStatusChip status={service.status} />
+                    <Chip
+                      label={service.isActive ? "Active" : "Inactive"}
+                      size="small"
+                      color={service.isActive ? "success" : "default"}
+                    />
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => openServiceChecklist(service)}
+                    >
+                      Review
+                    </Button>
+                  </Box>
                 </Box>
-              );
-            })
+              </Box>
+            ))
           )}
         </CardContent>
       </Card>
 
-      {carouselIndex !== null && carouselDocuments.length > 0 && (
+      {previewDocument && (
         <Dialog
           open
-          onClose={closeCarousel}
+          onClose={closePreview}
           maxWidth="md"
           fullWidth
           slotProps={{ paper: { sx: { backgroundColor: "#111" } } }}
         >
           <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", pb: 1 }}>
             <Typography variant="h6" sx={{ color: "text.primary" }}>
-              {CATEGORY_LABELS[carouselDocuments[carouselIndex].category] || carouselDocuments[carouselIndex].category}
-              {" "}
-              <Box component="span" sx={{ fontWeight: 400, opacity: 0.7 }}>
-                ({carouselIndex + 1} of {carouselDocuments.length})
-              </Box>
+              {previewDocument.fileName || "Document"}
             </Typography>
-            <Button onClick={closeCarousel} color="inherit" size="small">
-              Close
-            </Button>
+            <Button onClick={closePreview} color="inherit" size="small">Close</Button>
           </DialogTitle>
           <DialogContent sx={{ position: "relative", minHeight: 420, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {carouselIndex > 0 && (
-              <IconButton
-                onClick={() => stepCarousel(-1)}
-                sx={{ position: "absolute", left: 8, zIndex: 2, color: "text.primary", bgcolor: "rgba(255,255,255,0.08)", "&:hover": { bgcolor: "rgba(255,255,255,0.18)" } }}
-              >
-                <ChevronLeftIcon />
-              </IconButton>
+            {previewLoading[previewDocument.id] && <CircularProgress sx={{ color: "text.primary" }} />}
+            {!previewLoading[previewDocument.id] && previewUrls[previewDocument.id] && (
+              previewDocument.mimeType === "application/pdf" ? (
+                <iframe
+                  src={previewUrls[previewDocument.id]}
+                  title={previewDocument.fileName}
+                  style={{ width: "100%", height: "70vh", border: "none", borderRadius: 4 }}
+                />
+              ) : (
+                <img
+                  src={previewUrls[previewDocument.id]}
+                  alt={previewDocument.fileName}
+                  style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 4 }}
+                />
+              )
             )}
-            {carouselIndex < carouselDocuments.length - 1 && (
-              <IconButton
-                onClick={() => stepCarousel(1)}
-                sx={{ position: "absolute", right: 8, zIndex: 2, color: "text.primary", bgcolor: "rgba(255,255,255,0.08)", "&:hover": { bgcolor: "rgba(255,255,255,0.18)" } }}
-              >
-                <ChevronRightIcon />
-              </IconButton>
+            {!previewLoading[previewDocument.id] && !previewUrls[previewDocument.id] && (
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, color: "text.secondary" }}>
+                <ImageNotSupportedIcon />
+                <Typography variant="body2">Unable to load this document.</Typography>
+              </Box>
             )}
-            {(() => {
-              const doc = carouselDocuments[carouselIndex];
-              const docUrl = previewUrls[doc.id];
-              const loading = Boolean(previewLoading[doc.id]);
-              return (
-                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, width: "100%", py: 2 }}>
-                  <Typography variant="caption" sx={{ color: "text.primary", opacity: 0.8 }}>
-                    {doc.fileName}
-                  </Typography>
-                  {loading && <CircularProgress sx={{ color: "text.primary" }} />}
-                  {!loading && docUrl && (
-                    <img
-                      src={docUrl}
-                      alt={doc.fileName}
-                      style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 4 }}
-                    />
-                  )}
-                  {!loading && !docUrl && (
-                    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, color: "text.secondary" }}>
-                      <ImageNotSupportedIcon />
-                      <Typography variant="body2">Unable to load this document.</Typography>
-                    </Box>
-                  )}
-                </Box>
-              );
-            })()}
           </DialogContent>
           <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
             <Chip
               size="small"
-              label={docStatusLabel(carouselDocuments[carouselIndex].status)}
-              color={statusColor(carouselDocuments[carouselIndex].status)}
+              label={statusLabel(previewDocument.status || "unknown")}
+              color={statusColor(previewDocument.status)}
             />
-            <Button onClick={closeCarousel} color="inherit" size="small">
-              Close
+            <Button onClick={closePreview} color="inherit" size="small">Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {rejectDialogOpen && reviewTarget && (
+        <Dialog open onClose={() => setRejectDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Reject Document: {reviewTarget.name}</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              fullWidth
+              multiline
+              rows={3}
+              label="Rejection Reason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Provide a reason for rejecting this document..."
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+            <Button
+              color="error"
+              variant="contained"
+              disabled={!rejectReason.trim() || reviewLoading}
+              onClick={handleRejectDocument}
+            >
+              Reject
             </Button>
           </DialogActions>
         </Dialog>
       )}
 
-      {provider.services && provider.services.length > 0 && (
-        <Card variant="outlined" sx={{ mb: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Services
-            </Typography>
-            {provider.services.map((service, index) => (
-              <Box key={service.id}>
-                {index > 0 && <Divider sx={{ my: 1 }} />}
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Box>
-                    <Typography variant="body2">
-                      {service.service?.name || service.serviceId}
-                    </Typography>
-                    {service.customPrice !== null && (
-                      <Typography variant="body2" color="text.secondary">
-                        Custom Price: ${service.customPrice.toFixed(2)}
-                      </Typography>
-                    )}
+      {reviewService && (
+        <Dialog open maxWidth="md" fullWidth onClose={closeServiceChecklist}>
+          <DialogTitle>
+            Review Service: {reviewService.service?.name || reviewService.serviceId}
+          </DialogTitle>
+          <DialogContent dividers>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, flexWrap: "wrap" }}>
+              <VerificationStatusChip status={serviceChecklist?.status ?? reviewService.status} />
+              {serviceChecklist?.identityApproved === false && (
+                <Chip label="Identity not approved" size="small" color="error" />
+              )}
+            </Box>
+
+            {serviceChecklistLoading && !serviceChecklist ? (
+              <CircularProgress size={24} />
+            ) : serviceChecklist ? (
+              <>
+                {serviceChecklist.status === "rejected" && serviceChecklist.rejectionNote && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Rejection Reason:</Typography>
+                    {serviceChecklist.rejectionNote}
+                  </Alert>
+                )}
+
+                {serviceChecklist.requirements.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Requirements</Typography>
+                    {serviceChecklist.requirements.map((req) => (
+                      <Box key={req.id} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, flexWrap: "wrap" }}>
+                        <Chip label={statusLabel(req.status)} size="small" color={statusColor(req.status)} />
+                        <Typography variant="body2">{req.name}</Typography>
+                        {req.isRequired && <Chip label="Required" size="small" variant="outlined" />}
+                        {req.type === "attestation" && req.answer && (
+                          <Typography variant="caption" color="text.secondary">— &ldquo;{req.answer}&rdquo;</Typography>
+                        )}
+                        {req.documentId && (
+                          <>
+                            <Button size="small" startIcon={<VisibilityIcon />} onClick={() => openPreview({ id: req.documentId!, mimeType: req.mimeType, fileName: req.fileName, status: req.status })} disabled={Boolean(previewLoading[req.documentId])}>View</Button>
+                            {req.status === "pending_review" && (
+                              <>
+                                <Button size="small" color="success" startIcon={<CheckCircleIcon />} disabled={reviewLoading} onClick={() => handleApproveDocument(req.documentId!)}>Approve</Button>
+                                <Button size="small" color="error" startIcon={<CancelIcon />} disabled={reviewLoading} onClick={() => openRejectDialog(req.documentId!, req.name)}>Reject</Button>
+                              </>
+                            )}
+                          </>
+                        )}
+                        {req.status === "rejected" && req.rejectionReason && (
+                          <Typography variant="caption" color="error">— {req.rejectionReason}</Typography>
+                        )}
+                      </Box>
+                    ))}
                   </Box>
-                  <Chip
-                    label={service.isActive ? "Active" : "Inactive"}
-                    size="small"
-                    color={service.isActive ? "success" : "default"}
-                  />
-                </Box>
-              </Box>
-            ))}
-          </CardContent>
-        </Card>
+                )}
+
+                {serviceChecklist.questions.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Questionnaire</Typography>
+                    {serviceChecklist.questions.map((q) => (
+                      <Box key={q.id} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary">{q.question}</Typography>
+                        <Typography variant="body2">{q.answer || "—"}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Could not load checklist for this service.
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeServiceChecklist}>Close</Button>
+            {serviceChecklist?.status === "pending_review" && (
+              <>
+                <Button
+                  color="success"
+                  variant="contained"
+                  startIcon={<CheckCircleIcon />}
+                  disabled={serviceChecklistLoading || serviceChecklist.identityApproved === false}
+                  onClick={() => openServiceConfirm(true)}
+                >
+                  Approve Service
+                </Button>
+                <Button
+                  color="error"
+                  variant="outlined"
+                  startIcon={<CancelIcon />}
+                  disabled={serviceChecklistLoading}
+                  onClick={() => openServiceConfirm(false)}
+                >
+                  Reject Service
+                </Button>
+              </>
+            )}
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {serviceConfirmOpen && reviewService && (
+        <Dialog open onClose={() => setServiceConfirmOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {serviceApproved ? "Approve Service" : "Reject Service"}: {reviewService.service?.name}
+          </DialogTitle>
+          <DialogContent>
+            {serviceApproved ? (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Approving this service makes it bookable by customers.
+              </Alert>
+            ) : (
+              <TextField
+                autoFocus
+                fullWidth
+                multiline
+                rows={3}
+                label="Rejection Reason (required)"
+                value={serviceRejectionNote}
+                onChange={(e) => setServiceRejectionNote(e.target.value)}
+              />
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setServiceConfirmOpen(false)}>Cancel</Button>
+            <Button
+              color={serviceApproved ? "success" : "error"}
+              variant="contained"
+              disabled={serviceChecklistLoading || (!serviceApproved && !serviceRejectionNote.trim())}
+              onClick={handleServiceConfirm}
+            >
+              {serviceApproved ? "Approve" : "Reject"}
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
 
       <Card variant="outlined" sx={{ mb: 3 }}>
@@ -664,26 +966,26 @@ export default function ProviderDetailPage() {
       </Card>
 
       <ConfirmDialog
-        open={confirmOpen}
-        title={pendingApproved ? "Approve Provider" : "Reject Provider"}
+        open={identityConfirmOpen}
+        title={identityApproved ? "Approve Identity" : "Reject Identity"}
         description={
-          pendingApproved
-            ? "This will verify the provider and set their status to active. They will be notified of their approval."
-            : "This will reject the provider and set their status to suspended. They will not be able to accept jobs."
+          identityApproved
+            ? "This will approve the provider's identity (Step 1). Make sure all identity documents are approved first."
+            : "This will reject the provider's identity (Step 1). They will not be able to get any services approved until identity is re-approved."
         }
-        confirmLabel={pendingApproved ? "Approve" : "Reject"}
-        loading={actionLoading}
-        onConfirm={handleVerify}
-        onClose={() => setConfirmOpen(false)}
+        confirmLabel={identityApproved ? "Approve" : "Reject"}
+        loading={identityLoading}
+        onConfirm={handleIdentityConfirm}
+        onClose={() => setIdentityConfirmOpen(false)}
       >
-        {!pendingApproved && (
+        {!identityApproved && (
           <TextField
             fullWidth
             multiline
             rows={3}
             label="Rejection Reason (required)"
-            value={rejectionNote}
-            onChange={(e) => setRejectionNote(e.target.value)}
+            value={identityRejectionNote}
+            onChange={(e) => setIdentityRejectionNote(e.target.value)}
             sx={{ mt: 2 }}
             required
           />

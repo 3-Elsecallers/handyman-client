@@ -22,6 +22,7 @@ import AddCircleIcon from "@mui/icons-material/AddCircle";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import BookOnlineIcon from "@mui/icons-material/BookOnline";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
+import PaymentsIcon from "@mui/icons-material/Payments";
 import MenuIcon from "@mui/icons-material/Menu";
 import HandymanIcon from "@mui/icons-material/Handyman";
 
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { label: "New Booking", icon: <AddCircleIcon />, href: "/customer/dashboard/new-booking" },
   { label: "Services", icon: <StorefrontIcon />, href: "/customer/dashboard/services" },
   { label: "My Bookings", icon: <BookOnlineIcon />, href: "/customer/dashboard/bookings" },
+  { label: "Payments", icon: <PaymentsIcon />, href: "/customer/dashboard/payments" },
   { label: "Addresses", icon: <LocationOnIcon />, href: "/customer/dashboard/addresses" },
 ];
 

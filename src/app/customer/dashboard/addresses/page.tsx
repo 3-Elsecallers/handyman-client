@@ -44,6 +44,8 @@ import {
 import type { CreateAddressInput } from "@/api/customer.api";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import CustomerDashboardShell from "@/components/customer/CustomerDashboardShell";
+import LocationAutocomplete from "@/components/shared/LocationAutocomplete";
+import type { LocationSelection } from "@/lib/location";
 import type { Address, AddressType, GhanaRegion } from "@/types/customer";
 
 const ADDRESS_TYPES: AddressType[] = ["home", "office", "other"];
@@ -77,6 +79,8 @@ interface FormValues {
   contactName: string;
   contactPhone: string;
   isDefault: boolean;
+  lat: string;
+  lng: string;
 }
 
 const emptyValues: FormValues = {
@@ -92,6 +96,8 @@ const emptyValues: FormValues = {
   contactName: "",
   contactPhone: "",
   isDefault: false,
+  lat: "",
+  lng: "",
 };
 
 export default function CustomerAddressesPage() {
@@ -107,6 +113,7 @@ export default function CustomerAddressesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Address | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [location, setLocation] = useState<LocationSelection | null>(null);
 
   const fetchAddresses = useCallback(async () => {
     setLoading(true);
@@ -160,6 +167,10 @@ export default function CustomerAddressesPage() {
       if (values.landmark.trim()) payload.landmark = values.landmark.trim();
       if (values.digitalAddress.trim()) payload.digitalAddress = values.digitalAddress.trim();
       if (values.directions.trim()) payload.directions = values.directions.trim();
+      if (values.lat !== "" && values.lng !== "") {
+        payload.lat = Number(values.lat);
+        payload.lng = Number(values.lng);
+      }
 
       let response;
       if (editingAddress) {
@@ -186,6 +197,7 @@ export default function CustomerAddressesPage() {
   const handleOpenCreate = () => {
     setEditingAddress(null);
     formik.resetForm();
+    setLocation(null);
     setSubmitError(null);
     setDialogOpen(true);
   };
@@ -205,7 +217,22 @@ export default function CustomerAddressesPage() {
       contactName: address.contactName,
       contactPhone: address.contactPhone,
       isDefault: address.isDefault,
+      lat: typeof address.lat === "number" ? String(address.lat) : "",
+      lng: typeof address.lng === "number" ? String(address.lng) : "",
     });
+    setLocation(
+      typeof address.lat === "number" && typeof address.lng === "number"
+        ? {
+            formattedAddress: `${address.streetAndHouseNumber || ""} ${address.town}, ${address.district}, ${address.region}`.trim(),
+            streetAndHouseNumber: address.streetAndHouseNumber ?? undefined,
+            town: address.town,
+            district: address.district,
+            region: address.region,
+            lat: address.lat,
+            lng: address.lng,
+          }
+        : null,
+    );
     setSubmitError(null);
     setDialogOpen(true);
   };
@@ -214,7 +241,44 @@ export default function CustomerAddressesPage() {
     setDialogOpen(false);
     setEditingAddress(null);
     formik.resetForm();
+    setLocation(null);
     setSubmitError(null);
+  };
+
+  /** Matches a Places/geolocation selection to the Ghana dropdown values. */
+  const handleLocationChange = (value: LocationSelection | null) => {
+    setLocation(value);
+    if (!value) {
+      formik.setFieldValue("lat", "", true);
+      formik.setFieldValue("lng", "", true);
+      return;
+    }
+    formik.setFieldValue("lat", String(value.lat), true);
+    formik.setFieldValue("lng", String(value.lng), true);
+
+    if (value.town) formik.setFieldValue("town", value.town, true);
+    if (value.streetAndHouseNumber) {
+      formik.setFieldValue("streetAndHouseNumber", value.streetAndHouseNumber, true);
+    }
+    if (value.region) {
+      const match = regions.find(
+        (r) =>
+          r.name.toLowerCase() === value.region!.toLowerCase() ||
+          value.region!.toLowerCase().includes(r.name.toLowerCase()) ||
+          r.name.toLowerCase().includes(value.region!.toLowerCase().replace(/\s+region$/, "")),
+      );
+      const regionName = match?.name ?? value.region;
+      formik.setFieldValue("region", regionName, true);
+      if (match && value.district) {
+        const distMatch = match.districts.find(
+          (d) =>
+            d.toLowerCase() === value.district!.toLowerCase() ||
+            d.toLowerCase().includes(value.district!.toLowerCase()) ||
+            value.district!.toLowerCase().includes(d.toLowerCase()),
+        );
+        if (distMatch) formik.setFieldValue("district", distMatch, true);
+      }
+    }
   };
 
   const handleDelete = async () => {
@@ -341,6 +405,12 @@ export default function CustomerAddressesPage() {
         <DialogTitle>{editingAddress ? "Edit Address" : "Add Address"}</DialogTitle>
         <DialogContent>
           <Box component="form" onSubmit={formik.handleSubmit} noValidate sx={{ pt: 1 }}>
+            <LocationAutocomplete
+              value={location}
+              onChange={handleLocationChange}
+              label="Find your location"
+              hint="Searching your address auto-fills region, district, town and coordinates."
+            />
             <Grid container spacing={2}>
               <Grid size={6}>
                 <TextField

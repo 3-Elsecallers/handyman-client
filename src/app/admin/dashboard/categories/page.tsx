@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -11,7 +12,11 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -20,6 +25,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import BlockIcon from "@mui/icons-material/Block";
+import AssignmentIcon from "@mui/icons-material/Assignment";
 
 import { useFormik } from "formik";
 import * as Yup from "yup";
@@ -34,10 +40,12 @@ const createValidationSchema = Yup.object({
   name: Yup.string().trim().min(1, "Required").max(100, "Max 100 characters").required("Name is required"),
   description: Yup.string().trim().max(500, "Max 500 characters").optional(),
   iconUrl: Yup.string().trim().test('url-or-empty', 'Must be a valid URL', (value) => !value || Yup.string().url().isValidSync(value)),
+  safetyRiskLevel: Yup.string().oneOf(["low", "medium", "high"]).required("Risk level is required"),
   sortOrder: Yup.number().integer().min(0, "Min 0").optional(),
 });
 
 export default function CategoriesPage() {
+  const router = useRouter();
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -79,6 +87,7 @@ export default function CategoriesPage() {
       name: "",
       description: "",
       iconUrl: "",
+      safetyRiskLevel: "low",
       sortOrder: 0,
     },
     validationSchema: createValidationSchema,
@@ -89,6 +98,7 @@ export default function CategoriesPage() {
 
       const payload: Record<string, unknown> = {
         name: values.name.trim(),
+        safetyRiskLevel: values.safetyRiskLevel,
       };
       if (values.description.trim()) payload.description = values.description.trim();
       if (values.iconUrl.trim()) payload.iconUrl = values.iconUrl.trim();
@@ -153,6 +163,7 @@ export default function CategoriesPage() {
       name: category.name,
       description: category.description ?? "",
       iconUrl: category.iconUrl ?? "",
+      safetyRiskLevel: category.safetyRiskLevel || "low",
       sortOrder: category.sortOrder,
     });
     setSubmitError(null);
@@ -191,6 +202,17 @@ export default function CategoriesPage() {
       label: "Actions",
       render: (row) => (
         <Box sx={{ display: "flex", gap: 0.5 }}>
+          <Tooltip title="Requirements">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/admin/dashboard/categories/${row.id}/requirements`);
+              }}
+            >
+              <AssignmentIcon fontSize="small" color="info" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Edit">
             <IconButton
               size="small"
@@ -314,6 +336,22 @@ export default function CategoriesPage() {
               error={formik.touched.iconUrl && Boolean(formik.errors.iconUrl)}
               helperText={formik.touched.iconUrl && formik.errors.iconUrl}
             />
+            <FormControl fullWidth margin="normal">
+              <InputLabel id="safetyRiskLevel-label">Safety Risk Level</InputLabel>
+              <Select
+                labelId="safetyRiskLevel-label"
+                id="safetyRiskLevel"
+                name="safetyRiskLevel"
+                value={formik.values.safetyRiskLevel}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                label="Safety Risk Level"
+              >
+                <MenuItem value="low">Low</MenuItem>
+                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="high">High</MenuItem>
+              </Select>
+            </FormControl>
             <TextField
               margin="normal"
               fullWidth

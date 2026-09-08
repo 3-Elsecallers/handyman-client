@@ -1,9 +1,10 @@
 export type ProviderStatus = "pending_review" | "active" | "suspended" | "deactivated";
 export type ReviewStatus = "visible" | "flagged" | "removed";
 export type VerificationStatus = "not_submitted" | "pending_review" | "approved" | "rejected";
-export type DocumentCategory = "selfie" | "ghana_card" | "additional";
 export type DocumentStatus = "uploaded" | "pending_review" | "approved" | "rejected";
 export type UserStatus = "active" | "suspended";
+export type RequirementType = "document" | "attestation" | "certification";
+export type QuestionType = "yes_no" | "text" | "single_choice" | "multiple_choice";
 
 export interface CustomerUser {
   id: string;
@@ -29,6 +30,7 @@ export interface ServiceCategory {
   slug: string;
   description: string | null;
   iconUrl: string | null;
+  safetyRiskLevel: string;
   sortOrder: number;
   isActive: boolean;
   createdAt: string;
@@ -62,7 +64,13 @@ export interface ProviderProfile {
   verified: boolean;
   status: ProviderStatus;
   verificationStatus: VerificationStatus;
+  identityVerified?: boolean;
+  identityStatus?: VerificationStatus;
+  identityRejectionNote?: string | null;
   rejectionNote: string | null;
+  competencyTier?: string;
+  qualityGrade?: string;
+  probationaryBookingsRemaining?: number | null;
   serviceAreaRadiusKm: number;
   lat: number | null;
   lng: number | null;
@@ -88,6 +96,10 @@ export interface ProviderService {
   serviceId: string;
   customPrice: number | null;
   isActive: boolean;
+  status?: VerificationStatus;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
   createdAt: string;
   service?: Service;
 }
@@ -151,7 +163,8 @@ export interface PaginatedAuditLogs {
 export interface ProviderDocument {
   id: string;
   providerId: string;
-  category: DocumentCategory;
+  requirementId: string | null;
+  category: string;
   s3Key: string;
   fileName: string;
   fileSize: number;
@@ -194,4 +207,106 @@ export interface Booking {
 
 export interface CustomerDetail extends UserDetail {
   bookings?: Booking[];
+}
+
+export interface CategoryVettingRequirement {
+  id: string;
+  categoryId: string;
+  type: RequirementType;
+  name: string;
+  description: string | null;
+  isRequired: boolean;
+  acceptedMimeTypes: string[];
+  maxFileSizeMb: number;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CategoryQuestion {
+  id: string;
+  categoryId: string;
+  question: string;
+  type: QuestionType;
+  options: string[];
+  isRequired: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderRequirementChecklist {
+  universalDocs: Array<{
+    category: string;
+    status: string;
+    documentId: string;
+    fileName: string;
+    mimeType?: string;
+    rejectionReason: string | null;
+  }>;
+  requirements: Record<string, Array<{
+    id: string;
+    type: RequirementType;
+    name: string;
+    description: string | null;
+    isRequired: boolean;
+    status: string;
+    documentId?: string;
+    fileName?: string;
+    mimeType?: string;
+    rejectionReason?: string | null;
+    answer?: string | null;
+    attestationId?: string;
+  }>>;
+  questions: Record<string, Array<{
+    id: string;
+    question: string;
+    type: QuestionType;
+    options: string[];
+    isRequired: boolean;
+    answer: string | null;
+  }>>;
+  complete: boolean;
+  missing: string[];
+}
+
+export interface ProviderIdentity {
+  identityStatus: VerificationStatus;
+  identityVerified: boolean;
+  identityRejectionNote: string | null;
+  documents: ProviderDocument[];
+}
+
+export interface ProviderServiceChecklist {
+  serviceId: string;
+  providerServiceId: string;
+  serviceName: string;
+  categoryName: string;
+  status: VerificationStatus;
+  rejectionNote: string | null;
+  identityApproved: boolean;
+  requirements: Array<{
+    id: string;
+    type: RequirementType;
+    name: string;
+    description: string | null;
+    isRequired: boolean;
+    status: string;
+    documentId?: string;
+    fileName?: string;
+    mimeType?: string;
+    rejectionReason?: string | null;
+    answer?: string | null;
+    attestationId?: string;
+  }>;
+  questions: Array<{
+    id: string;
+    question: string;
+    type: QuestionType;
+    options: string[];
+    isRequired: boolean;
+    answer: string | null;
+  }>;
 }

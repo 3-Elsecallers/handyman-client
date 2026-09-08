@@ -16,9 +16,14 @@ import Typography from "@mui/material/Typography";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 import { getUserDetail, updateUserStatus } from "@/api/admin.api";
+import { buildServiceNameMap, listAllBookings } from "@/api/booking.api";
+import AdminTable from "@/components/admin/AdminTable";
+import type { AdminTableColumn } from "@/components/admin/AdminTable";
+import PaymentStatusChip from "@/components/admin/PaymentStatusChip";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import StatusChip from "@/components/admin/StatusChip";
 import type { UserDetail } from "@/types/admin";
+import type { Booking } from "@/types/customer";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -33,6 +38,11 @@ export default function CustomerDetailPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"suspend" | "activate">("suspend");
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const [serviceMap, setServiceMap] = useState<Record<string, string>>({});
 
   const fetchUser = useCallback(async () => {
     setLoading(true);
@@ -50,6 +60,31 @@ export default function CustomerDetailPage() {
     async function load() { await fetchUser(); }
     load();
   }, [fetchUser]);
+
+  const fetchBookings = useCallback(async () => {
+    setBookingsLoading(true);
+    setBookingsError(null);
+    const response = await listAllBookings({ customerId: id, limit: 20 });
+    if (response?.status === 200 && response.data.data) {
+      setBookings(response.data.data.items);
+    } else {
+      setBookingsError(response?.data?.message || "Failed to load booking history.");
+    }
+    setBookingsLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    async function load() {
+      const nameMap = await buildServiceNameMap();
+      setServiceMap(nameMap);
+    }
+    load();
+  }, []);
+
+  useEffect(() => {
+    async function load() { await fetchBookings(); }
+    load();
+  }, [fetchBookings]);
 
   const handleStatusAction = async () => {
     setActionLoading(true);
@@ -92,6 +127,32 @@ export default function CustomerDetailPage() {
       </Alert>
     );
   }
+
+  const bookingColumns: AdminTableColumn<Booking>[] = [
+    {
+      label: "Service",
+      render: (row) => serviceMap[row.serviceId] || row.service?.name || row.serviceId,
+    },
+    { label: "Type", key: "type" },
+    { label: "Status", render: (row) => <StatusChip status={row.status} /> },
+    {
+      label: "Payment",
+      render: (row) => <PaymentStatusChip status={row.paymentStatus ?? "pending"} />,
+    },
+    {
+      label: "Scheduled",
+      render: (row) =>
+        row.scheduledAt ? new Date(row.scheduledAt).toLocaleString() : "—",
+    },
+    {
+      label: "Price",
+      render: (row) => `GH₵ ${row.priceQuote.toFixed(2)}`,
+    },
+    {
+      label: "Created",
+      render: (row) => new Date(row.createdAt).toLocaleDateString(),
+    },
+  ];
 
   return (
     <Box>
@@ -190,9 +251,24 @@ export default function CustomerDetailPage() {
           <Typography variant="h6" gutterBottom>
             Booking History
           </Typography>
-          <Alert severity="info" sx={{ mt: 1 }}>
-            Booking history will be available once the booking service is fully integrated.
-          </Alert>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Recent bookings for this customer.
+          </Typography>
+          {bookingsError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {bookingsError}
+            </Alert>
+          )}
+          <AdminTable
+            columns={bookingColumns}
+            rows={bookings}
+            loading={bookingsLoading}
+            emptyMessage="No bookings found for this customer."
+            rowKey={(row) => row.id}
+            onRowClick={(row) =>
+              router.push(`/admin/dashboard/bookings/${row.id}`)
+            }
+          />
         </CardContent>
       </Card>
 

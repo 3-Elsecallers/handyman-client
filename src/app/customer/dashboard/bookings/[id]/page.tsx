@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
@@ -18,7 +18,6 @@ import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import IconButton from "@mui/material/IconButton";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -27,6 +26,7 @@ import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import PhoneIcon from "@mui/icons-material/Phone";
 
 import {
   cancelBooking,
@@ -36,7 +36,14 @@ import {
   reassignBooking,
   submitReview,
 } from "@/api/customer.api";
+import {
+  addTip,
+  initializePayment,
+  verifyPayment,
+  type Payment,
+} from "@/api/payment.api";
 import type { BookingProvider, BookingTimelineEntry } from "@/api/customer.api";
+import { markPaid } from "@/api/booking.api";
 import StatusChip from "@/components/admin/StatusChip";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import CustomerDashboardShell from "@/components/customer/CustomerDashboardShell";
@@ -45,7 +52,13 @@ import type { Booking } from "@/types/customer";
 export default function BookingDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const bookingId = params.id as string;
+
+  // Paystack appends the transaction reference to the redirect_url on return.
+  const returningFromPayment = Boolean(
+    searchParams.get("reference") || searchParams.get("trxref"),
+  );
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [timeline, setTimeline] = useState<BookingTimelineEntry[]>([]);
@@ -67,6 +80,12 @@ export default function BookingDetailPage() {
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
+
+  const [payment, setPayment] = useState<Payment | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [tipAmount, setTipAmount] = useState("");
+  const [tipLoading, setTipLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -91,12 +110,41 @@ export default function BookingDetailPage() {
     setLoading(false);
   }, [bookingId]);
 
+  const fetchPayment = useCallback(async () => {
+    const response = await initializePayment(bookingId);
+    if (
+      response &&
+      (response.status === 200 || response.status === 201) &&
+      response.data?.data
+    ) {
+      let p = response.data.data;
+      // If the user just returned from the Paystack checkout, reconcile the
+      // payment so the result reflects the charge even if the webhook hasn't
+      // landed yet (local/dev testing, webhook delays, etc.).
+      if (returningFromPayment && p.status === "pending") {
+        const verifyResponse = await verifyPayment(p.id);
+        if (
+          verifyResponse &&
+          verifyResponse.status === 200 &&
+          verifyResponse.data?.data
+        ) {
+          p = verifyResponse.data.data;
+        }
+      }
+      setPayment(p);
+      if (p.status === "paid") {
+        await fetchData();
+      }
+    }
+  }, [bookingId, returningFromPayment, fetchData]);
+
   useEffect(() => {
     async function load() {
       await fetchData();
+      await fetchPayment();
     }
     load();
-  }, [fetchData]);
+  }, [fetchData, fetchPayment]);
 
   const handleCancel = async () => {
     setCancelLoading(true);
@@ -144,6 +192,67 @@ export default function BookingDetailPage() {
     setReviewLoading(false);
   };
 
+  const handlePay = async () => {
+    setPaymentLoading(true);
+    setPayError(null);
+    const response = await initializePayment(bookingId);
+    if (
+      response &&
+      (response.status === 200 || response.status === 201) &&
+      response.data?.data
+    ) {
+      const p = response.data.data;
+      setPayment(p);
+      if (p.authorizationUrl) {
+        window.location.href = p.authorizationUrl;
+      }
+    } else {
+      setPayError(response?.data?.message || "Failed to initialize payment.");
+    }
+    setPaymentLoading(false);
+  };
+
+  const handleVerify = async () => {
+    if (!payment) return;
+    setPaymentLoading(true);
+    setPayError(null);
+    const response = await verifyPayment(payment.id);
+    if (response && response.status === 200 && response.data?.data) {
+      setPayment(response.data.data);
+      await fetchData();
+    } else {
+      setPayError(response?.data?.message || "Could not confirm payment.");
+    }
+    setPaymentLoading(false);
+  };
+
+  const handleMarkCashPaid = async () => {
+    setPaymentLoading(true);
+    setPayError(null);
+    const response = await markPaid(bookingId);
+    if (response?.status === 200) {
+      await fetchData();
+    } else {
+      setPayError(response?.data?.message || "Could not mark cash payment.");
+    }
+    setPaymentLoading(false);
+  };
+
+  const handleTip = async () => {
+    const amount = Number(tipAmount);
+    if (!payment || !amount || amount <= 0) return;
+    setTipLoading(true);
+    setPayError(null);
+    const response = await addTip(payment.id, amount);
+    if (response && (response.status === 200 || response.status === 201) && response.data?.data) {
+      setPayment(response.data.data);
+      setTipAmount("");
+    } else {
+      setPayError(response?.data?.message || "Failed to add tip.");
+    }
+    setTipLoading(false);
+  };
+
   const canCancel =
     booking &&
     (booking.status === "pending" || booking.status === "confirmed");
@@ -155,6 +264,27 @@ export default function BookingDetailPage() {
 
   const canReview =
     booking && booking.status === "completed" && !reviewSuccess;
+
+  const paymentStatus = payment?.status ?? booking?.paymentStatus ?? "pending";
+  const paymentIsPaid = paymentStatus === "paid";
+  const paymentIsRefunded = paymentStatus === "refunded";
+  const isCash = booking?.paymentMethod === "cash";
+  const canPay =
+    !paymentIsPaid &&
+    !paymentIsRefunded &&
+    booking &&
+    !isCash &&
+    (booking.status === "pending" ||
+      booking.status === "confirmed" ||
+      booking.status === "completed");
+  const canMarkCashPaid =
+    isCash &&
+    booking?.status === "completed" &&
+    booking.paymentStatus !== "cash_collected" &&
+    booking.paymentStatus !== "paid" &&
+    booking.paymentStatus !== "refunded";
+  const canTip =
+    booking?.status === "completed" && payment && payment.status === "paid";
 
   if (loading) {
     return (
@@ -204,6 +334,38 @@ export default function BookingDetailPage() {
         </Typography>
         <StatusChip status={booking.status} />
         <Chip label={booking.type} size="small" variant="outlined" />
+        <Chip
+          label={
+            paymentIsRefunded
+              ? "Refunded"
+              : paymentIsPaid
+                ? "Paid"
+                : paymentStatus === "failed"
+                  ? "Payment Failed"
+                  : paymentStatus === "cash_outstanding"
+                    ? "Cash Outstanding"
+                    : paymentStatus === "cash_collected"
+                      ? "Cash Collected"
+                      : paymentStatus === "confirmed"
+                        ? "Confirmed"
+                        : "Payment Pending"
+          }
+          size="small"
+          variant="outlined"
+          color={
+            paymentIsRefunded
+              ? "default"
+              : paymentIsPaid
+                ? "success"
+                : paymentStatus === "failed"
+                  ? "error"
+                  : paymentStatus === "cash_outstanding"
+                    ? "warning"
+                    : paymentStatus === "cash_collected" || paymentStatus === "confirmed"
+                      ? "info"
+                      : "warning"
+          }
+        />
       </Stack>
 
       {actionError && (
@@ -276,6 +438,118 @@ export default function BookingDetailPage() {
                     : "—"}
                   {booking.cancelledBy ? ` by ${booking.cancelledBy}` : ""}
                 </Typography>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                Payment
+              </Typography>
+              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                <Typography variant="body2">Status</Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontWeight: 600,
+                    color: paymentIsRefunded
+                      ? "text.secondary"
+                      : paymentIsPaid
+                        ? "success.main"
+                        : paymentStatus === "failed"
+                          ? "error.main"
+                          : "warning.main",
+                  }}
+                >
+                  {paymentIsRefunded
+                    ? "Refunded"
+                    : paymentIsPaid
+                      ? "Paid"
+                      : paymentStatus === "failed"
+                        ? "Failed"
+                        : "Pending"}
+                </Typography>
+              </Box>
+              {payment?.paystackRef && (
+                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                  <Typography variant="body2">Reference</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {payment.paystackRef}
+                  </Typography>
+                </Box>
+              )}
+              {payment?.amount != null && (
+                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                  <Typography variant="body2">Amount</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    ₵{payment.amount.toFixed(2)}
+                  </Typography>
+                </Box>
+              )}
+              {paymentIsPaid && payment?.tipAmount != null && payment.tipAmount > 0 && (
+                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                  <Typography variant="body2">Tip</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    ₵{payment.tipAmount.toFixed(2)}
+                  </Typography>
+                </Box>
+              )}
+              {canPay && (
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    fullWidth
+                    onClick={handlePay}
+                    disabled={paymentLoading}
+                  >
+                    {paymentLoading ? (
+                      <CircularProgress size={20} color="inherit" />
+                    ) : "Pay Now"}
+                  </Button>
+                </Box>
+              )}
+              {paymentIsPaid && (
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  sx={{ mt: 1 }}
+                  onClick={handleVerify}
+                  disabled={paymentLoading}
+                >
+                  {paymentLoading ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : "Verify Payment"}
+                </Button>
+              )}
+              {canMarkCashPaid && (
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    fullWidth
+                    onClick={handleMarkCashPaid}
+                    disabled={paymentLoading}
+                  >
+                    {paymentLoading ? (
+                      <CircularProgress size={20} color="inherit" />
+                    ) : "I Paid in Cash"}
+                  </Button>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                    Confirm once you’ve handed cash to the provider.
+                  </Typography>
+                </Box>
+              )}
+              {isCash && booking.paymentStatus === "cash_outstanding" && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Cash payment recorded. Waiting for the provider to confirm receipt.
+                </Alert>
+              )}
+              {payError && (
+                <Alert severity="error" sx={{ mt: 2 }} onClose={() => setPayError(null)}>
+                  {payError}
+                </Alert>
               )}
             </CardContent>
           </Card>
@@ -447,6 +721,18 @@ export default function BookingDetailPage() {
                       Avg response time: {provider.avgResponseTimeMins} min
                     </Typography>
                   )}
+                  {provider.phone && (
+                    <Stack
+                      direction="row"
+                      spacing={0.5}
+                      sx={{ alignItems: "center" }}
+                    >
+                      <PhoneIcon color="primary" fontSize="small" />
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {provider.phone}
+                      </Typography>
+                    </Stack>
+                  )}
                 </Box>
               ) : (
                 <Box>
@@ -516,6 +802,28 @@ export default function BookingDetailPage() {
                   >
                     Leave a Review
                   </Button>
+                )}
+                {canTip && (
+                  <Box>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        placeholder="Tip (₵)"
+                        value={tipAmount}
+                        onChange={(e) => setTipAmount(e.target.value)}
+                        disabled={tipLoading}
+                        sx={{ flexGrow: 1 }}
+                      />
+                      <Button
+                        variant="contained"
+                        onClick={handleTip}
+                        disabled={tipLoading || !Number(tipAmount) || Number(tipAmount) <= 0}
+                      >
+                        {tipLoading ? <CircularProgress size={20} color="inherit" /> : "Send Tip"}
+                      </Button>
+                    </Stack>
+                  </Box>
                 )}
                 <Button variant="outlined" fullWidth onClick={() => router.push("/customer/dashboard/bookings")}>
                   Back to Bookings

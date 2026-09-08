@@ -18,6 +18,7 @@ import type { ProviderProfile } from "@/types/admin";
 
 const STATUS_FILTERS = ["", "pending_review", "active", "suspended", "deactivated"] as const;
 const VERIFICATION_FILTERS = ["", "not_submitted", "pending_review", "approved", "rejected"] as const;
+const IDENTITY_FILTERS = ["", "not_submitted", "pending_review", "approved", "rejected"] as const;
 
 export default function ProvidersPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function ProvidersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [verificationFilter, setVerificationFilter] = useState<string>("");
+  const [identityFilter, setIdentityFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +43,7 @@ export default function ProvidersPage() {
       search: search || undefined,
       status: statusFilter || undefined,
       verificationStatus: verificationFilter || undefined,
+      identityStatus: identityFilter || undefined,
     });
     if (response?.status === 200 && response.data.data) {
       const data = response.data.data;
@@ -51,7 +54,7 @@ export default function ProvidersPage() {
       setError(response?.data?.message || "Failed to load providers.");
     }
     setLoading(false);
-  }, [page, pageSize, search, statusFilter, verificationFilter]);
+  }, [page, pageSize, search, statusFilter, verificationFilter, identityFilter]);
 
   useEffect(() => {
     async function load() { await fetchProviders(); }
@@ -91,6 +94,10 @@ export default function ProvidersPage() {
     {
       label: "Verification",
       render: (row) => <StatusChip status={row.verificationStatus} />,
+    },
+    {
+      label: "Identity",
+      render: (row) => <StatusChip status={row.identityStatus ?? "not_submitted"} />,
     },
     {
       label: "Created",
@@ -148,6 +155,24 @@ export default function ProvidersPage() {
           {VERIFICATION_FILTERS.filter(Boolean).map((vs) => (
             <MenuItem key={vs} value={vs}>
               {vs.replace(/_/g, " ")}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          size="small"
+          label="Identity"
+          value={identityFilter}
+          onChange={(e) => {
+            setIdentityFilter(e.target.value);
+            setPage(1);
+          }}
+          sx={{ minWidth: 160 }}
+        >
+          <MenuItem value="">All Identity</MenuItem>
+          {IDENTITY_FILTERS.filter(Boolean).map((is) => (
+            <MenuItem key={is} value={is}>
+              {is.replace(/_/g, " ")}
             </MenuItem>
           ))}
         </TextField>

@@ -19,12 +19,17 @@ import Typography from '@mui/material/Typography';
 
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PersonIcon from '@mui/icons-material/Person';
-import DescriptionIcon from '@mui/icons-material/Description';
+import FingerprintIcon from '@mui/icons-material/Fingerprint';
+import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import BuildIcon from '@mui/icons-material/Build';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import BlockIcon from '@mui/icons-material/Block';
 import RateReviewIcon from '@mui/icons-material/RateReview';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import PaymentsIcon from '@mui/icons-material/Payments';
+import HistoryIcon from '@mui/icons-material/History';
 import MenuIcon from '@mui/icons-material/Menu';
 import HandymanIcon from '@mui/icons-material/Handyman';
 import ScienceIcon from '@mui/icons-material/Science';
@@ -36,11 +41,16 @@ const DRAWER_WIDTH = 240;
 const NAV_ITEMS = [
   { label: 'Overview', icon: <DashboardIcon />, href: '/provider/dashboard' },
   { label: 'My Profile', icon: <PersonIcon />, href: '/provider/dashboard/profile' },
-  { label: 'Documents', icon: <DescriptionIcon />, href: '/provider/dashboard/documents' },
+  { label: 'Identity', icon: <FingerprintIcon />, href: '/provider/dashboard/identity' },
+  { label: 'Requirements', icon: <AssignmentIcon />, href: '/provider/dashboard/requirements' },
+  { label: 'Scorecard', icon: <MilitaryTechIcon />, href: '/provider/dashboard/scorecard' },
   { label: 'My Services', icon: <BuildIcon />, href: '/provider/dashboard/my-services' },
   { label: 'Availability', icon: <ScheduleIcon />, href: '/provider/dashboard/availability' },
   { label: 'Blocked Slots', icon: <BlockIcon />, href: '/provider/dashboard/blocked-slots' },
   { label: 'Reviews', icon: <RateReviewIcon />, href: '/provider/dashboard/reviews' },
+  { label: 'Wallet', icon: <AccountBalanceWalletIcon />, href: '/provider/dashboard/wallet' },
+  { label: 'Payout Method', icon: <PaymentsIcon />, href: '/provider/dashboard/payout-method' },
+  { label: 'Withdrawals', icon: <HistoryIcon />, href: '/provider/dashboard/withdrawals' },
   { label: 'Browse Catalog', icon: <StorefrontIcon />, href: '/provider/dashboard/browse-services' },
   { label: 'Test', icon: <ScienceIcon />, href: '/provider/dashboard/test' },
 ];

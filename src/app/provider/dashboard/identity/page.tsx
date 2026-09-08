@@ -9,6 +9,10 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
@@ -18,10 +22,12 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import DeleteIcon from "@mui/icons-material/Delete";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import ImageNotSupportedIcon from "@mui/icons-material/ImageNotSupported";
 import MuiIconButton from "@mui/material/IconButton";
 
-import { getMyProfile, getMyDocuments, requestDocumentUploadUrls, confirmDocumentUploads } from "@/api/provider.api";
-import type { ProviderProfile, ProviderDocument, DocumentCategory } from "@/types/provider";
+import { getMyIdentity, requestDocumentUploadUrls, confirmDocumentUploads, getDocumentDownloadUrl } from "@/api/provider.api";
+import type { ProviderIdentity, ProviderDocument, DocumentCategory } from "@/types/provider";
 
 const CATEGORY_LABELS: Record<DocumentCategory, string> = {
   selfie: "Selfie",
@@ -42,7 +48,7 @@ interface PendingFile {
 }
 
 export default function ProviderDocumentsPage() {
-  const [profile, setProfile] = useState<ProviderProfile | null>(null);
+  const [identity, setIdentity] = useState<ProviderIdentity | null>(null);
   const [documents, setDocuments] = useState<ProviderDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,21 +58,19 @@ export default function ProviderDocumentsPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedCategory, setSelectedCategory] = useState<DocumentCategory>("selfie");
+  const [previewDocument, setPreviewDocument] = useState<ProviderDocument | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [profileRes, docsRes] = await Promise.all([
-      getMyProfile(),
-      getMyDocuments(),
-    ]);
-    if (profileRes?.status === 200 && profileRes.data.data) {
-      setProfile(profileRes.data.data);
+    const res = await getMyIdentity();
+    if (res?.status === 200 && res.data.data) {
+      setIdentity(res.data.data);
+      setDocuments(res.data.data.documents || []);
     } else {
-      setError("Failed to load profile.");
-    }
-    if (docsRes?.status === 200 && docsRes.data.data) {
-      setDocuments(docsRes.data.data);
+      setError("Failed to load identity verification.");
     }
     setLoading(false);
   }, []);
@@ -217,7 +221,7 @@ export default function ProviderDocumentsPage() {
   };
 
   const getVerificationStatusColor = () => {
-    switch (profile?.verificationStatus) {
+    switch (identity?.identityStatus) {
       case "approved": return "success";
       case "rejected": return "error";
       case "pending_review": return "warning";
@@ -226,7 +230,7 @@ export default function ProviderDocumentsPage() {
   };
 
   const getVerificationStatusLabel = () => {
-    switch (profile?.verificationStatus) {
+    switch (identity?.identityStatus) {
       case "approved": return "Approved";
       case "rejected": return "Rejected";
       case "pending_review": return "Pending Review";
@@ -236,6 +240,23 @@ export default function ProviderDocumentsPage() {
 
   const documentsByCategory = (category: DocumentCategory) =>
     documents.filter((d) => d.category === category);
+
+  const openPreview = async (doc: ProviderDocument) => {
+    setPreviewDocument(doc);
+    setPreviewLoading(true);
+    const res = await getDocumentDownloadUrl(doc.id);
+    if (res?.status === 200 && res.data.data?.url) {
+      setPreviewUrl(res.data.data.url);
+    } else {
+      setPreviewUrl(null);
+    }
+    setPreviewLoading(false);
+  };
+
+  const closePreview = () => {
+    setPreviewDocument(null);
+    setPreviewUrl(null);
+  };
 
   if (loading) {
     return (
@@ -252,7 +273,11 @@ export default function ProviderDocumentsPage() {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        Documents & Verification
+        Identity Verification
+      </Typography>
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+        Step 1 of 2: Verify your identity with a Ghana Card selfie and government-issued photo ID.
+        An admin must approve your identity before your services can be activated.
       </Typography>
 
       {submitSuccess && (
@@ -276,22 +301,22 @@ export default function ProviderDocumentsPage() {
               label={getVerificationStatusLabel()}
               color={getVerificationStatusColor() as "success" | "error" | "warning" | "default"}
               icon={
-                profile?.verificationStatus === "approved" ? <CheckCircleIcon /> :
-                profile?.verificationStatus === "rejected" ? <ErrorIcon /> :
-                profile?.verificationStatus === "pending_review" ? <HourglassEmptyIcon /> :
+                identity?.identityStatus === "approved" ? <CheckCircleIcon /> :
+                identity?.identityStatus === "rejected" ? <ErrorIcon /> :
+                identity?.identityStatus === "pending_review" ? <HourglassEmptyIcon /> :
                 undefined
               }
             />
           </Box>
-          {profile?.verificationStatus === "rejected" && profile.rejectionNote && (
+          {identity?.identityStatus === "rejected" && identity.identityRejectionNote && (
             <Alert severity="error" sx={{ mt: 2 }}>
               <Typography variant="subtitle2" gutterBottom>Rejection Reason:</Typography>
-              {profile.rejectionNote}
+              {identity.identityRejectionNote}
             </Alert>
           )}
-          {profile?.verificationStatus === "approved" && (
+          {identity?.identityStatus === "approved" && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Your account has been verified. You can now accept jobs.
+              Your identity has been verified. You can now complete service requirements.
             </Typography>
           )}
         </CardContent>
@@ -428,6 +453,13 @@ export default function ProviderDocumentsPage() {
                       <Typography variant="caption" color="text.secondary">
                         ({(doc.fileSize / 1024 / 1024).toFixed(1)}MB)
                       </Typography>
+                      <Button
+                        size="small"
+                        startIcon={<VisibilityIcon />}
+                        onClick={() => openPreview(doc)}
+                      >
+                        View
+                      </Button>
                       {doc.status === "rejected" && doc.rejectionReason && (
                         <Typography variant="caption" color="error">
                           - {doc.rejectionReason}
@@ -442,6 +474,60 @@ export default function ProviderDocumentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {previewDocument && (
+        <Dialog
+          open
+          onClose={closePreview}
+          maxWidth="md"
+          fullWidth
+          slotProps={{ paper: { sx: { backgroundColor: "#111" } } }}
+        >
+          <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", pb: 1 }}>
+            <Typography variant="h6" sx={{ color: "text.primary" }}>
+              {previewDocument.fileName}
+            </Typography>
+            <Button onClick={closePreview} color="inherit" size="small">Close</Button>
+          </DialogTitle>
+          <DialogContent sx={{ position: "relative", minHeight: 420, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {previewLoading && <CircularProgress sx={{ color: "text.primary" }} />}
+            {!previewLoading && previewUrl && (
+              previewDocument.mimeType === "application/pdf" ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewDocument.fileName}
+                  style={{ width: "100%", height: "70vh", border: "none", borderRadius: 4 }}
+                />
+              ) : (
+                <img
+                  src={previewUrl}
+                  alt={previewDocument.fileName}
+                  style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 4 }}
+                />
+              )
+            )}
+            {!previewLoading && !previewUrl && (
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, color: "text.secondary" }}>
+                <ImageNotSupportedIcon />
+                <Typography variant="body2">Unable to load this document.</Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
+            <Chip
+              size="small"
+              label={previewDocument.status.replace("_", " ")}
+              color={
+                previewDocument.status === "approved" ? "success" :
+                previewDocument.status === "rejected" ? "error" :
+                previewDocument.status === "pending_review" ? "warning" :
+                "default"
+              }
+            />
+            <Button onClick={closePreview} color="inherit" size="small">Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Box>
   );
 }
