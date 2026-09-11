@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
@@ -37,6 +37,7 @@ import {
   reviewProviderDocument,
 } from "@/api/admin.api";
 import { listAllBookings, buildServiceNameMap } from "@/api/booking.api";
+import { markNotificationsReadByContext } from "@/api/communication.api";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import StatusChip from "@/components/admin/StatusChip";
 import AdminTable from "@/components/admin/AdminTable";
@@ -80,6 +81,7 @@ function statusLabel(status: string): string {
 export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
 
   const [provider, setProvider] = useState<ProviderDetail | null>(null);
@@ -128,6 +130,8 @@ export default function ProviderDetailPage() {
   const [bookingsTotalPages, setBookingsTotalPages] = useState(0);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [serviceNameMap, setServiceNameMap] = useState<Record<string, string>>({});
+  const [highlightServiceId, setHighlightServiceId] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchProvider = useCallback(async () => {
     setLoading(true);
@@ -204,6 +208,35 @@ export default function ProviderDetailPage() {
     };
   }, [previewUrls]);
 
+  // Honor deep links from admin notifications (?tab=identity|services&service=).
+  useEffect(() => {
+    if (loading || !provider) return;
+    const tab = searchParams.get("tab");
+    if (tab !== "identity" && tab !== "services") return;
+
+    const serviceId = searchParams.get("service");
+    const timer = setTimeout(() => {
+      const sectionId =
+        tab === "identity" ? "identity-section" : "services-section";
+      document
+        .getElementById(sectionId)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      if (!serviceId) return;
+      setHighlightServiceId(serviceId);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(
+        () => setHighlightServiceId(null),
+        4000,
+      );
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    };
+  }, [loading, provider, searchParams]);
+
   const refreshAll = async () => {
     await Promise.all([fetchProvider(), fetchIdentity(), fetchServices()]);
   };
@@ -234,6 +267,7 @@ export default function ProviderDetailPage() {
       );
       setIdentityConfirmOpen(false);
       await refreshAll();
+      await markNotificationsReadByContext({ providerId: id });
     } else {
       setActionError(response?.data?.message || "Action failed. Please try again.");
     }
@@ -336,6 +370,10 @@ export default function ProviderDetailPage() {
       setServiceConfirmOpen(false);
       setServiceChecklist(null);
       await refreshAll();
+      await markNotificationsReadByContext({
+        providerId: id,
+        providerServiceId: reviewService.id,
+      });
     } else {
       setActionError(response?.data?.message || "Action failed. Please try again.");
     }
@@ -572,7 +610,7 @@ export default function ProviderDetailPage() {
         </CardContent>
       </Card>
 
-      <Card variant="outlined" sx={{ mb: 3 }}>
+      <Card variant="outlined" sx={{ mb: 3, scrollMarginTop: 88 }} id="identity-section">
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Step 1 — Identity Verification
@@ -634,7 +672,7 @@ export default function ProviderDetailPage() {
         </CardContent>
       </Card>
 
-      <Card variant="outlined" sx={{ mb: 3 }}>
+      <Card variant="outlined" sx={{ mb: 3, scrollMarginTop: 88 }} id="services-section">
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Step 2 — Service Verification
@@ -652,9 +690,29 @@ export default function ProviderDetailPage() {
             </Typography>
           ) : (
             providerServices.map((service, index) => (
-              <Box key={service.id}>
+              <Box key={service.id} id={`service-row-${service.id}`}>
                 {index > 0 && <Divider sx={{ my: 1.5 }} />}
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 1,
+                    borderRadius: 1,
+                    outline:
+                      highlightServiceId === service.id
+                        ? "2px solid"
+                        : "none",
+                    outlineColor: "primary.main",
+                    backgroundColor:
+                      highlightServiceId === service.id
+                        ? "action.hover"
+                        : "transparent",
+                    p: highlightServiceId === service.id ? 1 : undefined,
+                    transition: "outline-color 300ms, background-color 300ms",
+                  }}
+                >
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {service.service?.name || service.serviceId}
@@ -824,10 +882,52 @@ export default function ProviderDetailPage() {
                   </Box>
                 )}
 
+                {serviceChecklist.serviceRequirements.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Service-Specific Requirements</Typography>
+                    {serviceChecklist.serviceRequirements.map((req) => (
+                      <Box key={req.id} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, flexWrap: "wrap" }}>
+                        <Chip label={statusLabel(req.status)} size="small" color={statusColor(req.status)} />
+                        <Typography variant="body2">{req.name}</Typography>
+                        {req.isRequired && <Chip label="Required" size="small" variant="outlined" />}
+                        {req.type === "attestation" && req.answer && (
+                          <Typography variant="caption" color="text.secondary">— &ldquo;{req.answer}&rdquo;</Typography>
+                        )}
+                        {req.documentId && (
+                          <>
+                            <Button size="small" startIcon={<VisibilityIcon />} onClick={() => openPreview({ id: req.documentId!, mimeType: req.mimeType, fileName: req.fileName, status: req.status })} disabled={Boolean(previewLoading[req.documentId])}>View</Button>
+                            {req.status === "pending_review" && (
+                              <>
+                                <Button size="small" color="success" startIcon={<CheckCircleIcon />} disabled={reviewLoading} onClick={() => handleApproveDocument(req.documentId!)}>Approve</Button>
+                                <Button size="small" color="error" startIcon={<CancelIcon />} disabled={reviewLoading} onClick={() => openRejectDialog(req.documentId!, req.name)}>Reject</Button>
+                              </>
+                            )}
+                          </>
+                        )}
+                        {req.status === "rejected" && req.rejectionReason && (
+                          <Typography variant="caption" color="error">— {req.rejectionReason}</Typography>
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+
                 {serviceChecklist.questions.length > 0 && (
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="subtitle2" gutterBottom>Questionnaire</Typography>
                     {serviceChecklist.questions.map((q) => (
+                      <Box key={q.id} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary">{q.question}</Typography>
+                        <Typography variant="body2">{q.answer || "—"}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+
+                {serviceChecklist.serviceQuestions.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Service-Specific Questions</Typography>
+                    {serviceChecklist.serviceQuestions.map((q) => (
                       <Box key={q.id} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
                         <Typography variant="body2" color="text.secondary">{q.question}</Typography>
                         <Typography variant="body2">{q.answer || "—"}</Typography>

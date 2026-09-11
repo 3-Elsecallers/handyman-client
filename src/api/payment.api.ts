@@ -129,6 +129,17 @@ export async function getPayment(id: string) {
   }
 }
 
+export async function getPaymentByBooking(bookingId: string) {
+  try {
+    const response = await axios.get<{ data: Payment }>(
+      `/payments/by-booking/${bookingId}`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
 export async function verifyPayment(id: string) {
   try {
     const response = await axios.post<{ data: Payment }>(`/payments/${id}/verify`);

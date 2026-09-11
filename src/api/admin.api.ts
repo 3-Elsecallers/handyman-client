@@ -18,6 +18,8 @@ import type {
   PaginatedAuditLogs,
   CategoryVettingRequirement,
   CategoryQuestion,
+  ServiceVettingRequirement,
+  ServiceQuestion,
   ProviderRequirementChecklist,
 } from "@/types/admin";
 
@@ -646,6 +648,124 @@ export async function getProviderRequirements(providerId: string) {
   try {
     const response = await axios.get<{ data: ProviderRequirementChecklist }>(
       `/admin/providers/${providerId}/requirements`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getServiceRequirements(serviceId: string) {
+  try {
+    const response = await axios.get<{ data: ServiceVettingRequirement[] }>(
+      `/admin/services/${serviceId}/service-requirements`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function createServiceRequirement(
+  serviceId: string,
+  data: {
+    type: "document" | "attestation" | "certification";
+    name: string;
+    description?: string;
+    isRequired?: boolean;
+    acceptedMimeTypes?: string[];
+    maxFileSizeMb?: number;
+    sortOrder?: number;
+  },
+) {
+  try {
+    const response = await axios.post<{ data: ServiceVettingRequirement }>(
+      `/admin/services/${serviceId}/service-requirements`,
+      data,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function updateServiceRequirement(
+  requirementId: string,
+  data: Record<string, unknown>,
+) {
+  try {
+    const response = await axios.put<{ data: ServiceVettingRequirement }>(
+      `/admin/service-requirements/${requirementId}`,
+      data,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function deleteServiceRequirement(requirementId: string) {
+  try {
+    const response = await axios.delete<{ data: { id: string; deletedAt: string } }>(
+      `/admin/service-requirements/${requirementId}`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function getServiceQuestions(serviceId: string) {
+  try {
+    const response = await axios.get<{ data: ServiceQuestion[] }>(
+      `/admin/services/${serviceId}/service-questions`,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function createServiceQuestion(
+  serviceId: string,
+  data: {
+    question: string;
+    type: "yes_no" | "text" | "single_choice" | "multiple_choice";
+    options?: string[];
+    isRequired?: boolean;
+    sortOrder?: number;
+  },
+) {
+  try {
+    const response = await axios.post<{ data: ServiceQuestion }>(
+      `/admin/services/${serviceId}/service-questions`,
+      data,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function updateServiceQuestion(
+  questionId: string,
+  data: Record<string, unknown>,
+) {
+  try {
+    const response = await axios.put<{ data: ServiceQuestion }>(
+      `/admin/service-questions/${questionId}`,
+      data,
+    );
+    return response;
+  } catch (error: unknown) {
+    return isAxiosError(error) ? error.response : undefined;
+  }
+}
+
+export async function deleteServiceQuestion(questionId: string) {
+  try {
+    const response = await axios.delete<{ data: { id: string; deletedAt: string } }>(
+      `/admin/service-questions/${questionId}`,
     );
     return response;
   } catch (error: unknown) {

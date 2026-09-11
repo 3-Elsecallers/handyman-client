@@ -276,7 +276,7 @@ export default function ProviderDocumentsPage() {
         Identity Verification
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-        Step 1 of 2: Verify your identity with a Ghana Card selfie and government-issued photo ID.
+        Step 1 of 2: Verify your identity with a selfie and government-issued photo ID (Ghana Card).
         An admin must approve your identity before your services can be activated.
       </Typography>
 

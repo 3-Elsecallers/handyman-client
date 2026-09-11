@@ -164,6 +164,7 @@ export interface ProviderDocument {
   id: string;
   providerId: string;
   requirementId: string | null;
+  serviceRequirementId?: string | null;
   category: string;
   s3Key: string;
   fileName: string;
@@ -237,6 +238,34 @@ export interface CategoryQuestion {
   updatedAt: string;
 }
 
+export interface ServiceVettingRequirement {
+  id: string;
+  serviceId: string;
+  type: RequirementType;
+  name: string;
+  description: string | null;
+  isRequired: boolean;
+  acceptedMimeTypes: string[];
+  maxFileSizeMb: number;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceQuestion {
+  id: string;
+  serviceId: string;
+  question: string;
+  type: QuestionType;
+  options: string[];
+  isRequired: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProviderRequirementChecklist {
   universalDocs: Array<{
     category: string;
@@ -261,6 +290,28 @@ export interface ProviderRequirementChecklist {
     attestationId?: string;
   }>>;
   questions: Record<string, Array<{
+    id: string;
+    question: string;
+    type: QuestionType;
+    options: string[];
+    isRequired: boolean;
+    answer: string | null;
+  }>>;
+  serviceRequirements: Record<string, Array<{
+    id: string;
+    type: RequirementType;
+    name: string;
+    description: string | null;
+    isRequired: boolean;
+    status: string;
+    documentId?: string;
+    fileName?: string;
+    mimeType?: string;
+    rejectionReason?: string | null;
+    answer?: string | null;
+    attestationId?: string;
+  }>>;
+  serviceQuestions: Record<string, Array<{
     id: string;
     question: string;
     type: QuestionType;
@@ -301,7 +352,29 @@ export interface ProviderServiceChecklist {
     answer?: string | null;
     attestationId?: string;
   }>;
+  serviceRequirements: Array<{
+    id: string;
+    type: RequirementType;
+    name: string;
+    description: string | null;
+    isRequired: boolean;
+    status: string;
+    documentId?: string;
+    fileName?: string;
+    mimeType?: string;
+    rejectionReason?: string | null;
+    answer?: string | null;
+    attestationId?: string;
+  }>;
   questions: Array<{
+    id: string;
+    question: string;
+    type: QuestionType;
+    options: string[];
+    isRequired: boolean;
+    answer: string | null;
+  }>;
+  serviceQuestions: Array<{
     id: string;
     question: string;
     type: QuestionType;

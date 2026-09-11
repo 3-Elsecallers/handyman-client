@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -24,6 +25,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import BlockIcon from "@mui/icons-material/Block";
+import AssignmentIcon from "@mui/icons-material/Assignment";
 
 import { useFormik } from "formik";
 import * as Yup from "yup";
@@ -45,6 +47,8 @@ const createValidationSchema = Yup.object({
 });
 
 export default function ServicesPage() {
+  const router = useRouter();
+
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -228,6 +232,17 @@ export default function ServicesPage() {
       label: "Actions",
       render: (row) => (
         <Box sx={{ display: "flex", gap: 0.5 }}>
+          <Tooltip title="Manage Requirements">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/admin/dashboard/services/${row.id}/requirements`);
+              }}
+            >
+              <AssignmentIcon fontSize="small" color="primary" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Edit">
             <IconButton
               size="small"

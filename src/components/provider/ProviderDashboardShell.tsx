@@ -33,12 +33,23 @@ import HistoryIcon from '@mui/icons-material/History';
 import MenuIcon from '@mui/icons-material/Menu';
 import HandymanIcon from '@mui/icons-material/Handyman';
 import ScienceIcon from '@mui/icons-material/Science';
+import NotificationIcon from '@mui/icons-material/Notifications';
 
+import Badge from '@mui/material/Badge';
 import SignOutDialog from '@/components/dashboard/SignOutDialog';
+import NotificationBell from '@/components/shared/NotificationBell';
+import { resolveProviderNotificationRoute } from '@/utils/notificationRoutes';
 
 const DRAWER_WIDTH = 240;
 
-const NAV_ITEMS = [
+interface NavItem {
+  label: string;
+  icon: ReactNode;
+  href: string;
+  notificationBadge?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { label: 'Overview', icon: <DashboardIcon />, href: '/provider/dashboard' },
   { label: 'My Profile', icon: <PersonIcon />, href: '/provider/dashboard/profile' },
   { label: 'Identity', icon: <FingerprintIcon />, href: '/provider/dashboard/identity' },
@@ -52,6 +63,7 @@ const NAV_ITEMS = [
   { label: 'Payout Method', icon: <PaymentsIcon />, href: '/provider/dashboard/payout-method' },
   { label: 'Withdrawals', icon: <HistoryIcon />, href: '/provider/dashboard/withdrawals' },
   { label: 'Browse Catalog', icon: <StorefrontIcon />, href: '/provider/dashboard/browse-services' },
+  { label: 'Notifications', icon: <NotificationIcon />, href: '/provider/dashboard/notifications', notificationBadge: true },
   { label: 'Test', icon: <ScienceIcon />, href: '/provider/dashboard/test' },
 ];
 
@@ -65,6 +77,7 @@ export default function ProviderDashboardShell({
   const pathname = usePathname();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const drawer = (
     <Box>
@@ -96,7 +109,16 @@ export default function ProviderDashboardShell({
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+              <ListItemIcon sx={{ minWidth: 36 }}>
+                <Badge
+                  badgeContent={item.notificationBadge ? unreadCount : undefined}
+                  color="error"
+                  max={99}
+                  invisible={!item.notificationBadge || !unreadCount}
+                >
+                  {item.icon}
+                </Badge>
+              </ListItemIcon>
               <ListItemText primary={item.label} />
             </ListItemButton>
           );
@@ -129,6 +151,11 @@ export default function ProviderDashboardShell({
           >
             Handyman
           </Typography>
+          <NotificationBell
+            resolveRoute={resolveProviderNotificationRoute}
+            viewAllHref="/provider/dashboard/notifications"
+            onUnreadChange={setUnreadCount}
+          />
           <Button
             color="inherit"
             variant="outlined"

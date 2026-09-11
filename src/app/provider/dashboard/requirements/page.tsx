@@ -60,7 +60,9 @@ export default function ProviderRequirementsPage() {
   const searchParams = useSearchParams();
   const serviceId = searchParams.get("serviceId") || undefined;
   const [requirements, setRequirements] = useState<VettingRequirement[]>([]);
+  const [serviceRequirements, setServiceRequirements] = useState<VettingRequirement[]>([]);
   const [questions, setQuestions] = useState<VettingQuestion[]>([]);
+  const [serviceQuestions, setServiceQuestions] = useState<VettingQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attestationResponses, setAttestationResponses] = useState<Record<string, string>>({});
@@ -84,10 +86,12 @@ export default function ProviderRequirementsPage() {
     ]);
     if (reqRes?.status === 200 && reqRes.data?.data?.requirements) {
       const reqs = reqRes.data.data.requirements;
+      const sReqs = reqRes.data.data.serviceRequirements || [];
       setRequirements(reqs);
+      setServiceRequirements(sReqs);
       setProviderVerificationStatus(reqRes.data.data.providerVerificationStatus || null);
       const initial: Record<string, string> = {};
-      reqs.forEach((r: VettingRequirement) => {
+      [...reqs, ...sReqs].forEach((r: VettingRequirement) => {
         if (r.type === 'attestation' && r.answer) {
           initial[r.id] = r.answer;
         } else if (r.type === 'attestation' && r.submissionStatus) {
@@ -100,9 +104,11 @@ export default function ProviderRequirementsPage() {
     }
     if (qRes?.status === 200 && qRes.data?.data?.questions) {
       const qs = qRes.data.data.questions;
+      const sQs = qRes.data.data.serviceQuestions || [];
       setQuestions(qs);
+      setServiceQuestions(sQs);
       const initialAnswers: Record<string, string | string[]> = {};
-      qs.forEach((q: VettingQuestion) => {
+      [...qs, ...sQs].forEach((q: VettingQuestion) => {
         if (q.answer !== null) {
           initialAnswers[q.id] = q.type === 'multiple_choice'
             ? q.answer.split(',').filter(Boolean)
@@ -121,12 +127,24 @@ export default function ProviderRequirementsPage() {
     load();
   }, [fetchData, serviceId]);
 
+  const allRequirements = [...requirements, ...serviceRequirements];
+  const allQuestions = [...questions, ...serviceQuestions];
+
   const requirementsByCategory: RequirementsByCategory = {};
   requirements.forEach((r) => {
     if (!requirementsByCategory[r.categoryName]) {
       requirementsByCategory[r.categoryName] = [];
     }
     requirementsByCategory[r.categoryName].push(r);
+  });
+
+  const serviceRequirementsByService: RequirementsByCategory = {};
+  serviceRequirements.forEach((r) => {
+    const key = r.serviceName || 'Service';
+    if (!serviceRequirementsByService[key]) {
+      serviceRequirementsByService[key] = [];
+    }
+    serviceRequirementsByService[key].push(r);
   });
 
   const questionsByCategory: QuestionsByCategory = {};
@@ -137,20 +155,29 @@ export default function ProviderRequirementsPage() {
     questionsByCategory[q.categoryName].push(q);
   });
 
-  const totalRequired = requirements.filter((r) => r.isRequired).length + questions.filter((q) => q.isRequired).length;
-  const completedRequired = requirements.filter((r) => {
+  const serviceQuestionsByService: QuestionsByCategory = {};
+  serviceQuestions.forEach((q) => {
+    const key = q.serviceName || 'Service';
+    if (!serviceQuestionsByService[key]) {
+      serviceQuestionsByService[key] = [];
+    }
+    serviceQuestionsByService[key].push(q);
+  });
+
+  const totalRequired = allRequirements.filter((r) => r.isRequired).length + allQuestions.filter((q) => q.isRequired).length;
+  const completedRequired = allRequirements.filter((r) => {
     if (!r.isRequired) return false;
     if (r.type === 'attestation') {
       return Boolean(attestationResponses[r.id]);
     }
     return Boolean(r.submissionStatus && r.submissionStatus !== 'not_submitted');
   }).length +
-    questions.filter((q) => q.isRequired && questionAnswers[q.id] !== undefined && questionAnswers[q.id] !== null && questionAnswers[q.id] !== '').length;
+    allQuestions.filter((q) => q.isRequired && questionAnswers[q.id] !== undefined && questionAnswers[q.id] !== null && questionAnswers[q.id] !== '').length;
   const progressPercent = totalRequired > 0 ? Math.round((completedRequired / totalRequired) * 100) : 0;
 
   const allRequiredAnswered =
-    requirements.every((r) => !r.isRequired || (r.type === 'attestation' ? Boolean(attestationResponses[r.id]) : Boolean(r.submissionStatus && r.submissionStatus !== 'not_submitted'))) &&
-    questions.every((q) => !q.isRequired || (questionAnswers[q.id] !== undefined && questionAnswers[q.id] !== null && questionAnswers[q.id] !== ''));
+    allRequirements.every((r) => !r.isRequired || (r.type === 'attestation' ? Boolean(attestationResponses[r.id]) : Boolean(r.submissionStatus && r.submissionStatus !== 'not_submitted'))) &&
+    allQuestions.every((q) => !q.isRequired || (questionAnswers[q.id] !== undefined && questionAnswers[q.id] !== null && questionAnswers[q.id] !== ''));
 
   const canSubmit = allRequiredAnswered && totalRequired > 0;
 
@@ -159,17 +186,17 @@ export default function ProviderRequirementsPage() {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-    const attestations = requirements
+    const attestations = allRequirements
       .filter((r) => r.type === 'attestation' && attestationResponses[r.id])
       .map((r) => ({
-        requirementId: r.id,
+        ...(r.scope === 'service' ? { serviceRequirementId: r.id } : { requirementId: r.id }),
         answer: attestationResponses[r.id],
       }));
 
-    const questionPayload = questions
+    const questionPayload = allQuestions
       .filter((q) => questionAnswers[q.id] !== undefined && questionAnswers[q.id] !== null && questionAnswers[q.id] !== '')
       .map((q) => ({
-        questionId: q.id,
+        ...(q.scope === 'service' ? { serviceQuestionId: q.id } : { questionId: q.id }),
         answer: Array.isArray(questionAnswers[q.id]) ? (questionAnswers[q.id] as string[]).join(',') : (questionAnswers[q.id] as string),
       }));
 
@@ -227,7 +254,7 @@ export default function ProviderRequirementsPage() {
           fileSize: file.size,
           mimeType: file.type,
           category: req.type === 'certification' ? 'certification' : 'requirement_document',
-          requirementId: req.id,
+          ...(req.scope === 'service' ? { serviceRequirementId: req.id } : { requirementId: req.id }),
         },
       ]);
 
@@ -371,98 +398,52 @@ export default function ProviderRequirementsPage() {
             <Typography variant="h6" gutterBottom>
               {categoryName}
             </Typography>
-            {categoryReqs.map((req) => {
-              const uploadState = uploadStates[req.id];
-              const isFileType = req.type === 'document' || req.type === 'certification';
-              const hasUploadedDoc = Boolean(req.submissionStatus && req.submissionStatus !== 'not_submitted');
-              return (
-                <Box key={req.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ flex: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body1">{req.name}</Typography>
-                      <Chip label={req.type} size="small" variant="outlined" />
-                      {req.isRequired && <Chip label="Required" size="small" color="primary" variant="outlined" />}
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
-                      {(() => {
-                        const effectiveStatus = getEffectiveStatus(req);
-                        return (
-                          <>
-                            <Chip
-                              label={getStatusLabel(effectiveStatus)}
-                              size="small"
-                              color={getStatusColor(effectiveStatus) as 'success' | 'error' | 'warning' | 'default'}
-                              icon={
-                                effectiveStatus === 'approved' ? <CheckCircleIcon /> :
-                                effectiveStatus === 'rejected' ? <ErrorIcon /> :
-                                effectiveStatus === 'submitted' ? <HourglassEmptyIcon /> :
-                                undefined
-                              }
-                            />
-                            {effectiveStatus === 'rejected' && req.rejectionReason && (
-                              <Typography variant="caption" color="error">
-                                {req.rejectionReason}
-                              </Typography>
-                            )}
-                          </>
-                        );
-                      })()}
-                      {uploadState?.error && (
-                        <Typography variant="caption" color="error">{uploadState.error}</Typography>
-                      )}
-                      {uploadState?.success && (
-                        <Typography variant="caption" color="success.main">{uploadState.success}</Typography>
-                      )}
-                      {isFileType && req.documentId && (
-                        <Button
-                          size="small"
-                          startIcon={<VisibilityIcon />}
-                          onClick={() => openPreview({ id: req.documentId!, mimeType: req.mimeType, fileName: req.fileName })}
-                        >
-                          View
-                        </Button>
-                      )}
-                    </Box>
-                  </Box>
-                  <Box>
-                    {req.type === 'attestation' && (
-                      <RadioGroup
-                        row
-                        value={attestationResponses[req.id] || ''}
-                        onChange={(e) => setAttestationResponses((prev) => ({ ...prev, [req.id]: e.target.value }))}
-                      >
-                        <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
-                        <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
-                      </RadioGroup>
-                    )}
-                    {isFileType && (
-                      <>
-                        <input
-                          ref={(el) => { fileInputRef.current[req.id] = el; }}
-                          type="file"
-                          accept={(req.acceptedMimeTypes?.length ? req.acceptedMimeTypes : ['image/jpeg', 'image/png', 'image/webp']).join(',')}
-                          hidden
-                          onChange={(e) => handleFileChange(req, e)}
-                        />
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={uploadState?.uploading ? <CircularProgress size={16} /> : <UploadFileIcon />}
-                          disabled={uploadState?.uploading}
-                          onClick={() => fileInputRef.current[req.id]?.click()}
-                        >
-                          {uploadState?.uploading
-                            ? 'Uploading...'
-                            : hasUploadedDoc
-                              ? 'Replace'
-                              : 'Upload'}
-                        </Button>
-                      </>
-                    )}
-                  </Box>
-                </Box>
-              );
-            })}
+            <Typography variant="caption" color="text.secondary">
+              Category requirements
+            </Typography>
+            {categoryReqs.map((req) => (
+              <RequirementRow
+                key={req.id}
+                req={req}
+                fileInputRef={fileInputRef}
+                uploadStates={uploadStates}
+                attestationResponses={attestationResponses}
+                setAttestationResponses={setAttestationResponses}
+                getEffectiveStatus={getEffectiveStatus}
+                getStatusColor={getStatusColor}
+                getStatusLabel={getStatusLabel}
+                openPreview={openPreview}
+                handleFileChange={handleFileChange}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      ))}
+
+      {Object.entries(serviceRequirementsByService).map(([serviceName, sReqs]) => (
+        <Card key={`sr-${serviceName}`} variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              {serviceName}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Service-specific requirements
+            </Typography>
+            {sReqs.map((req) => (
+              <RequirementRow
+                key={req.id}
+                req={req}
+                fileInputRef={fileInputRef}
+                uploadStates={uploadStates}
+                attestationResponses={attestationResponses}
+                setAttestationResponses={setAttestationResponses}
+                getEffectiveStatus={getEffectiveStatus}
+                getStatusColor={getStatusColor}
+                getStatusLabel={getStatusLabel}
+                openPreview={openPreview}
+                handleFileChange={handleFileChange}
+              />
+            ))}
           </CardContent>
         </Card>
       ))}
@@ -474,79 +455,29 @@ export default function ProviderRequirementsPage() {
               {categoryName} - Questions
             </Typography>
             {categoryQuestions.map((q) => (
-              <Box key={q.id} sx={{ mb: 3, pb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                <FormControl component="fieldset" fullWidth>
-                  <FormLabel component="legend" sx={{ mb: 1 }}>
-                    {q.question}
-                    {q.isRequired && <Chip label="Required" size="small" color="primary" variant="outlined" sx={{ ml: 1 }} />}
-                  </FormLabel>
-                  {q.type === 'yes_no' && (
-                    <RadioGroup
-                      row
-                      value={questionAnswers[q.id] || ''}
-                      onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                    >
-                      <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
-                      <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
-                    </RadioGroup>
-                  )}
-                  {q.type === 'text' && (
-                    <TextField
-                      size="small"
-                      fullWidth
-                      value={questionAnswers[q.id] || ''}
-                      onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                    />
-                  )}
-                  {q.type === 'single_choice' && (
-                    <RadioGroup
-                      value={questionAnswers[q.id] || ''}
-                      onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                    >
-                      {q.options.map((opt) => (
-                        <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />
-                      ))}
-                    </RadioGroup>
-                  )}
-                  {q.type === 'multiple_choice' && (
-                    <FormGroup>
-                      {q.options.map((opt) => {
-                        const current = Array.isArray(questionAnswers[q.id]) ? (questionAnswers[q.id] as string[]) : [];
-                        return (
-                          <FormControlLabel
-                            key={opt}
-                            control={
-                              <Checkbox
-                                size="small"
-                                checked={current.includes(opt)}
-                                onChange={(e) => {
-                                  setQuestionAnswers((prev) => {
-                                    const prevArr = Array.isArray(prev[q.id]) ? [...(prev[q.id] as string[])] : [];
-                                    if (e.target.checked) {
-                                      prevArr.push(opt);
-                                    } else {
-                                      const idx = prevArr.indexOf(opt);
-                                      if (idx > -1) prevArr.splice(idx, 1);
-                                    }
-                                    return { ...prev, [q.id]: prevArr };
-                                  });
-                                }}
-                              />
-                            }
-                            label={opt}
-                          />
-                        );
-                      })}
-                    </FormGroup>
-                  )}
-                </FormControl>
-              </Box>
+              <QuestionRow key={q.id} q={q} questionAnswers={questionAnswers} setQuestionAnswers={setQuestionAnswers} />
             ))}
           </CardContent>
         </Card>
       ))}
 
-      {requirements.length > 0 || questions.length > 0 ? (
+      {Object.entries(serviceQuestionsByService).map(([serviceName, sQuestions]) => (
+        <Card key={`sq-${serviceName}`} variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              {serviceName} - Questions
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Service-specific questions
+            </Typography>
+            {sQuestions.map((q) => (
+              <QuestionRow key={q.id} q={q} questionAnswers={questionAnswers} setQuestionAnswers={setQuestionAnswers} />
+            ))}
+          </CardContent>
+        </Card>
+      ))}
+
+      {allRequirements.length > 0 || allQuestions.length > 0 ? (
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
           <Button
             variant="contained"
@@ -607,6 +538,196 @@ export default function ProviderRequirementsPage() {
           </DialogActions>
         </Dialog>
       )}
+    </Box>
+  );
+}
+
+interface RequirementRowProps {
+  req: VettingRequirement;
+  fileInputRef: React.MutableRefObject<Record<string, HTMLInputElement | null>>;
+  uploadStates: Record<string, UploadState>;
+  attestationResponses: Record<string, string>;
+  setAttestationResponses: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  getEffectiveStatus: (req: VettingRequirement) => string | null;
+  getStatusColor: (status: string | null) => string;
+  getStatusLabel: (status: string | null) => string;
+  openPreview: (doc: { id: string; mimeType: string | null; fileName: string | null }) => void;
+  handleFileChange: (req: VettingRequirement, event: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+function RequirementRow({
+  req,
+  fileInputRef,
+  uploadStates,
+  attestationResponses,
+  setAttestationResponses,
+  getEffectiveStatus,
+  getStatusColor,
+  getStatusLabel,
+  openPreview,
+  handleFileChange,
+}: RequirementRowProps) {
+  const uploadState = uploadStates[req.id];
+  const isFileType = req.type === 'document' || req.type === 'certification';
+  const hasUploadedDoc = Boolean(req.submissionStatus && req.submissionStatus !== 'not_submitted');
+  const effectiveStatus = getEffectiveStatus(req);
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ flex: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body1">{req.name}</Typography>
+          <Chip label={req.type} size="small" variant="outlined" />
+          {req.isRequired && <Chip label="Required" size="small" color="primary" variant="outlined" />}
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+          <Chip
+            label={getStatusLabel(effectiveStatus)}
+            size="small"
+            color={getStatusColor(effectiveStatus) as 'success' | 'error' | 'warning' | 'default'}
+            icon={
+              effectiveStatus === 'approved' ? <CheckCircleIcon /> :
+              effectiveStatus === 'rejected' ? <ErrorIcon /> :
+              effectiveStatus === 'submitted' ? <HourglassEmptyIcon /> :
+              undefined
+            }
+          />
+          {effectiveStatus === 'rejected' && req.rejectionReason && (
+            <Typography variant="caption" color="error">
+              {req.rejectionReason}
+            </Typography>
+          )}
+          {uploadState?.error && (
+            <Typography variant="caption" color="error">{uploadState.error}</Typography>
+          )}
+          {uploadState?.success && (
+            <Typography variant="caption" color="success.main">{uploadState.success}</Typography>
+          )}
+          {isFileType && req.documentId && (
+            <Button
+              size="small"
+              startIcon={<VisibilityIcon />}
+              onClick={() => openPreview({ id: req.documentId!, mimeType: req.mimeType, fileName: req.fileName })}
+            >
+              View
+            </Button>
+          )}
+        </Box>
+      </Box>
+      <Box>
+        {req.type === 'attestation' && (
+          <RadioGroup
+            row
+            value={attestationResponses[req.id] || ''}
+            onChange={(e) => setAttestationResponses((prev) => ({ ...prev, [req.id]: e.target.value }))}
+          >
+            <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
+            <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
+          </RadioGroup>
+        )}
+        {isFileType && (
+          <>
+            <input
+              ref={(el) => { fileInputRef.current[req.id] = el; }}
+              type="file"
+              accept={(req.acceptedMimeTypes?.length ? req.acceptedMimeTypes : ['image/jpeg', 'image/png', 'image/webp']).join(',')}
+              hidden
+              onChange={(e) => handleFileChange(req, e)}
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={uploadState?.uploading ? <CircularProgress size={16} /> : <UploadFileIcon />}
+              disabled={uploadState?.uploading}
+              onClick={() => fileInputRef.current[req.id]?.click()}
+            >
+              {uploadState?.uploading
+                ? 'Uploading...'
+                : hasUploadedDoc
+                  ? 'Replace'
+                  : 'Upload'}
+            </Button>
+          </>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+interface QuestionRowProps {
+  q: VettingQuestion;
+  questionAnswers: Record<string, string | string[]>;
+  setQuestionAnswers: React.Dispatch<React.SetStateAction<Record<string, string | string[]>>>;
+}
+
+function QuestionRow({ q, questionAnswers, setQuestionAnswers }: QuestionRowProps) {
+  return (
+    <Box sx={{ mb: 3, pb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+      <FormControl component="fieldset" fullWidth>
+        <FormLabel component="legend" sx={{ mb: 1 }}>
+          {q.question}
+          {q.isRequired && <Chip label="Required" size="small" color="primary" variant="outlined" sx={{ ml: 1 }} />}
+        </FormLabel>
+        {q.type === 'yes_no' && (
+          <RadioGroup
+            row
+            value={questionAnswers[q.id] || ''}
+            onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+          >
+            <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
+            <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
+          </RadioGroup>
+        )}
+        {q.type === 'text' && (
+          <TextField
+            size="small"
+            fullWidth
+            value={questionAnswers[q.id] || ''}
+            onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+          />
+        )}
+        {q.type === 'single_choice' && (
+          <RadioGroup
+            value={questionAnswers[q.id] || ''}
+            onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+          >
+            {q.options.map((opt) => (
+              <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />
+            ))}
+          </RadioGroup>
+        )}
+        {q.type === 'multiple_choice' && (
+          <FormGroup>
+            {q.options.map((opt) => {
+              const current = Array.isArray(questionAnswers[q.id]) ? (questionAnswers[q.id] as string[]) : [];
+              return (
+                <FormControlLabel
+                  key={opt}
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={current.includes(opt)}
+                      onChange={(e) => {
+                        setQuestionAnswers((prev) => {
+                          const prevArr = Array.isArray(prev[q.id]) ? [...(prev[q.id] as string[])] : [];
+                          if (e.target.checked) {
+                            prevArr.push(opt);
+                          } else {
+                            const idx = prevArr.indexOf(opt);
+                            if (idx > -1) prevArr.splice(idx, 1);
+                          }
+                          return { ...prev, [q.id]: prevArr };
+                        });
+                      }}
+                    />
+                  }
+                  label={opt}
+                />
+              );
+            })}
+          </FormGroup>
+        )}
+      </FormControl>
     </Box>
   );
 }

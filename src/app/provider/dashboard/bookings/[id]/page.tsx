@@ -16,12 +16,16 @@ import {
   buildServiceNameMap,
   completeBooking,
   confirmBooking,
-  confirmCash,
   declineBooking,
   getBooking,
   getBookingTimeline,
   startBooking,
 } from "@/api/booking.api";
+import {
+  confirmPayment,
+  getPaymentByBooking,
+  type Payment,
+} from "@/api/payment.api";
 import StatusChip from "@/components/admin/StatusChip";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import type {
@@ -57,6 +61,7 @@ export default function ProviderBookingDetailPage() {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [timeline, setTimeline] = useState<BookingTimelineEntry[]>([]);
   const [serviceMap, setServiceMap] = useState<Record<string, string>>({});
+  const [payment, setPayment] = useState<Payment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -72,7 +77,18 @@ export default function ProviderBookingDetailPage() {
       getBookingTimeline(id),
     ]);
     if (bookingResponse?.status === 200 && bookingResponse.data.data) {
-      setBooking(bookingResponse.data.data);
+      const data = bookingResponse.data.data;
+      setBooking(data);
+      if (data.status === "completed") {
+        const paymentResponse = await getPaymentByBooking(id);
+        if (paymentResponse?.status === 200 && paymentResponse.data?.data) {
+          setPayment(paymentResponse.data.data);
+        } else {
+          setPayment(null);
+        }
+      } else {
+        setPayment(null);
+      }
     } else {
       setError(bookingResponse?.data?.message || "Failed to load booking.");
     }
@@ -392,12 +408,13 @@ export default function ProviderBookingDetailPage() {
               </Alert>
             )}
             {booking.paymentMethod === "cash" &&
-              booking.paymentStatus === "cash_outstanding" && (
+              payment &&
+              payment.status !== "paid" && (
                 <Button
                   variant="contained"
                   color="success"
                   sx={{ mt: 2 }}
-                  onClick={() => runAction(() => confirmCash(booking.id), "Cash confirmed as received.")}
+                  onClick={() => runAction(() => confirmPayment(payment.id), "Cash confirmed as received.")}
                   disabled={actionLoading}
                 >
                   Confirm Cash Received

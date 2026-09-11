@@ -130,6 +130,7 @@ export interface ProviderDocument {
   id: string;
   providerId: string;
   requirementId: string | null;
+  serviceRequirementId?: string | null;
   category: DocumentCategory;
   s3Key: string;
   fileName: string;
@@ -156,8 +157,11 @@ export type VettingSubmissionStatus = "not_submitted" | "pending_review" | "appr
 
 export interface VettingRequirement {
   id: string;
-  categoryId: string;
+  scope?: "category" | "service";
+  categoryId?: string;
   categoryName: string;
+  serviceId?: string;
+  serviceName?: string;
   type: VettingRequirementType;
   name: string;
   description: string | null;
@@ -178,8 +182,11 @@ export type VettingQuestionType = "yes_no" | "text" | "single_choice" | "multipl
 
 export interface VettingQuestion {
   id: string;
-  categoryId: string;
+  scope?: "category" | "service";
+  categoryId?: string;
   categoryName: string;
+  serviceId?: string;
+  serviceName?: string;
   question: string;
   type: VettingQuestionType;
   options: string[];
@@ -191,21 +198,25 @@ export interface VettingQuestion {
 
 export interface VettingRequirementsResponse {
   requirements: VettingRequirement[];
+  serviceRequirements: VettingRequirement[];
   providerVerificationStatus: string | null;
   identityStatus?: string | null;
 }
 
 export interface VettingQuestionsResponse {
   questions: VettingQuestion[];
+  serviceQuestions: VettingQuestion[];
 }
 
 export interface AttestationPayload {
-  requirementId: string;
+  requirementId?: string;
+  serviceRequirementId?: string;
   answer: string;
 }
 
 export interface QuestionAnswerPayload {
-  questionId: string;
+  questionId?: string;
+  serviceQuestionId?: string;
   answer: string;
 }
 

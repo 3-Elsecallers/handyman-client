@@ -215,6 +215,7 @@ export async function requestDocumentUploadUrls(files: {
   mimeType: string;
   category: string;
   requirementId?: string;
+  serviceRequirementId?: string;
 }[]) {
   try {
     const response = await axios.post<{ data: UploadUrlItem[] }>(

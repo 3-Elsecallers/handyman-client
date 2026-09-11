@@ -25,18 +25,35 @@ import LocationOnIcon from "@mui/icons-material/LocationOn";
 import PaymentsIcon from "@mui/icons-material/Payments";
 import MenuIcon from "@mui/icons-material/Menu";
 import HandymanIcon from "@mui/icons-material/Handyman";
+import NotificationIcon from "@mui/icons-material/Notifications";
 
+import Badge from "@mui/material/Badge";
 import SignOutDialog from "@/components/dashboard/SignOutDialog";
+import NotificationBell from "@/components/shared/NotificationBell";
+import { resolveCustomerNotificationRoute } from "@/utils/notificationRoutes";
 
 const DRAWER_WIDTH = 240;
 
-const NAV_ITEMS = [
+interface NavItem {
+  label: string;
+  icon: ReactNode;
+  href: string;
+  notificationBadge?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", icon: <DashboardIcon />, href: "/customer/dashboard" },
   { label: "New Booking", icon: <AddCircleIcon />, href: "/customer/dashboard/new-booking" },
   { label: "Services", icon: <StorefrontIcon />, href: "/customer/dashboard/services" },
   { label: "My Bookings", icon: <BookOnlineIcon />, href: "/customer/dashboard/bookings" },
   { label: "Payments", icon: <PaymentsIcon />, href: "/customer/dashboard/payments" },
   { label: "Addresses", icon: <LocationOnIcon />, href: "/customer/dashboard/addresses" },
+  {
+    label: "Notifications",
+    icon: <NotificationIcon />,
+    href: "/customer/dashboard/notifications",
+    notificationBadge: true,
+  },
 ];
 
 interface CustomerDashboardShellProps {
@@ -49,6 +66,7 @@ export default function CustomerDashboardShell({
   const pathname = usePathname();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const drawer = (
     <Box>
@@ -80,7 +98,16 @@ export default function CustomerDashboardShell({
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+              <ListItemIcon sx={{ minWidth: 36 }}>
+                <Badge
+                  badgeContent={item.notificationBadge ? unreadCount : undefined}
+                  color="error"
+                  max={99}
+                  invisible={!item.notificationBadge || !unreadCount}
+                >
+                  {item.icon}
+                </Badge>
+              </ListItemIcon>
               <ListItemText primary={item.label} />
             </ListItemButton>
           );
@@ -113,6 +140,11 @@ export default function CustomerDashboardShell({
           >
             Handyman
           </Typography>
+          <NotificationBell
+            resolveRoute={resolveCustomerNotificationRoute}
+            viewAllHref="/customer/dashboard/notifications"
+            onUnreadChange={setUnreadCount}
+          />
           <Button
             color="inherit"
             variant="outlined"

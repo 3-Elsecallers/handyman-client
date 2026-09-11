@@ -38,12 +38,12 @@ import {
 } from "@/api/customer.api";
 import {
   addTip,
+  getPaymentByBooking,
   initializePayment,
   verifyPayment,
   type Payment,
 } from "@/api/payment.api";
 import type { BookingProvider, BookingTimelineEntry } from "@/api/customer.api";
-import { markPaid } from "@/api/booking.api";
 import StatusChip from "@/components/admin/StatusChip";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import CustomerDashboardShell from "@/components/customer/CustomerDashboardShell";
@@ -111,10 +111,10 @@ export default function BookingDetailPage() {
   }, [bookingId]);
 
   const fetchPayment = useCallback(async () => {
-    const response = await initializePayment(bookingId);
+    const response = await getPaymentByBooking(bookingId);
     if (
       response &&
-      (response.status === 200 || response.status === 201) &&
+      response.status === 200 &&
       response.data?.data
     ) {
       let p = response.data.data;
@@ -135,6 +135,8 @@ export default function BookingDetailPage() {
       if (p.status === "paid") {
         await fetchData();
       }
+    } else {
+      setPayment(null);
     }
   }, [bookingId, returningFromPayment, fetchData]);
 
@@ -226,18 +228,6 @@ export default function BookingDetailPage() {
     setPaymentLoading(false);
   };
 
-  const handleMarkCashPaid = async () => {
-    setPaymentLoading(true);
-    setPayError(null);
-    const response = await markPaid(bookingId);
-    if (response?.status === 200) {
-      await fetchData();
-    } else {
-      setPayError(response?.data?.message || "Could not mark cash payment.");
-    }
-    setPaymentLoading(false);
-  };
-
   const handleTip = async () => {
     const amount = Number(tipAmount);
     if (!payment || !amount || amount <= 0) return;
@@ -270,19 +260,10 @@ export default function BookingDetailPage() {
   const paymentIsRefunded = paymentStatus === "refunded";
   const isCash = booking?.paymentMethod === "cash";
   const canPay =
+    booking?.status === "completed" &&
     !paymentIsPaid &&
     !paymentIsRefunded &&
-    booking &&
-    !isCash &&
-    (booking.status === "pending" ||
-      booking.status === "confirmed" ||
-      booking.status === "completed");
-  const canMarkCashPaid =
-    isCash &&
-    booking?.status === "completed" &&
-    booking.paymentStatus !== "cash_collected" &&
-    booking.paymentStatus !== "paid" &&
-    booking.paymentStatus !== "refunded";
+    !isCash;
   const canTip =
     booking?.status === "completed" && payment && payment.status === "paid";
 
@@ -523,27 +504,11 @@ export default function BookingDetailPage() {
                   ) : "Verify Payment"}
                 </Button>
               )}
-              {canMarkCashPaid && (
-                <Box sx={{ mt: 2 }}>
-                  <Button
-                    variant="contained"
-                    color="success"
-                    fullWidth
-                    onClick={handleMarkCashPaid}
-                    disabled={paymentLoading}
-                  >
-                    {paymentLoading ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : "I Paid in Cash"}
-                  </Button>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-                    Confirm once you’ve handed cash to the provider.
-                  </Typography>
-                </Box>
-              )}
-              {isCash && booking.paymentStatus === "cash_outstanding" && (
+              {isCash && booking.status === "completed" && !paymentIsPaid && (
                 <Alert severity="info" sx={{ mt: 2 }}>
-                  Cash payment recorded. Waiting for the provider to confirm receipt.
+                  Please pay the provider in cash after the service.{" "}
+                  {provider ? `${provider.name ?? "The provider"} will confirm` : "They will confirm"}{" "}
+                  receipt to complete the payment.
                 </Alert>
               )}
               {payError && (

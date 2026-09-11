@@ -1,10 +1,9 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import AppBar from '@mui/material/AppBar';
-import Badge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
@@ -31,12 +30,21 @@ import NotificationIcon from '@mui/icons-material/Notifications';
 import PaymentsIcon from '@mui/icons-material/Payments';
 
 import AdminNavItem from '@/components/admin/AdminNavItem';
+import NotificationBell from '@/components/shared/NotificationBell';
 import SignOutDialog from '@/components/dashboard/SignOutDialog';
-import { getVerificationQueueCount } from '@/api/admin.api';
+import { resolveNotificationRoute } from '@/utils/notificationRoutes';
 
 const DRAWER_WIDTH = 240;
 
-const NAV_ITEMS = [
+interface NavItem {
+  label: string;
+  icon: ReactNode;
+  href: string;
+  badge?: boolean;
+  notificationBadge?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { label: 'Overview', icon: <DashboardIcon />, href: '/admin/dashboard' },
   { label: 'Users', icon: <UserIcon />, href: '/admin/dashboard/users' },
   { label: 'Customers', icon: <CustomerIcon />, href: '/admin/dashboard/customers' },
@@ -48,6 +56,7 @@ const NAV_ITEMS = [
   { label: 'Bookings', icon: <EventIcon />, href: '/admin/dashboard/bookings' },
   { label: 'Finance', icon: <PaymentsIcon />, href: '/admin/dashboard/finance' },
   { label: 'Promo Codes', icon: <PercentIcon />, href: '/admin/dashboard/promos' },
+  { label: 'Notifications', icon: <NotificationIcon />, href: '/admin/dashboard/notifications', notificationBadge: true },
   { label: 'Audit Log', icon: <AuditIcon />, href: '/admin/dashboard/audit-log' },
 ];
 
@@ -61,6 +70,7 @@ export default function AdminDashboardShell({
   const router = useRouter();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const drawer = (
     <Box>
@@ -76,7 +86,7 @@ export default function AdminDashboardShell({
           <AdminNavItem
             key={item.href}
             {...item}
-            badgeCount={undefined}
+            badgeCount={item.notificationBadge ? unreadCount : undefined}
           />
         ))}
       </List>
@@ -107,15 +117,11 @@ export default function AdminDashboardShell({
           >
             Handyman
           </Typography>
-          <IconButton
-            color="inherit"
-            sx={{ mr: 1 }}
-            // onClick={}
-          >
-            <Badge badgeContent={undefined} color="error" max={99}>
-              <NotificationIcon />
-            </Badge>
-          </IconButton>
+          <NotificationBell
+            resolveRoute={resolveNotificationRoute}
+            viewAllHref="/admin/dashboard/notifications"
+            onUnreadChange={setUnreadCount}
+          />
           <Button
             color="inherit"
             variant="outlined"
